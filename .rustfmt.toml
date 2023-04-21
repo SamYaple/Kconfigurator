@@ -1,0 +1,3 @@
+enum_discrim_align_threshold = 20
+struct_field_align_threshold = 20
+unstable_features = true
