@@ -1,12 +1,9 @@
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take, take_till, take_till1, take_until, take_while, take_while1};
-use nom::character::complete::{
-    char, line_ending, multispace0, multispace1, newline, none_of, not_line_ending, one_of,
-    satisfy, space0, space1,
-};
-use nom::combinator::{eof, map, not, opt, peek, recognize, value};
+use nom::bytes::complete::{tag, take, take_until, take_while1};
+use nom::character::complete::{line_ending, multispace0, multispace1, satisfy, space0, space1};
+use nom::combinator::{eof, map, not, peek, recognize};
 use nom::multi::{many0, many1, many_till};
-use nom::sequence::{delimited, pair, preceded, terminated, tuple};
+use nom::sequence::tuple;
 use nom::IResult;
 
 #[derive(Debug)]
@@ -24,7 +21,7 @@ enum ConfigToken {
 
 #[derive(Debug, Default)]
 pub struct KConfig {
-    options:  Option<Vec<KOption>>,
+    pub options:  Option<Vec<KOption>>,
     choices:  Option<Vec<KChoice>>,
     configs:  Option<Vec<String>>,
     blocks:   Option<Vec<(String, KConfig)>>,
@@ -52,10 +49,10 @@ pub fn take_kconfig(input: &str) -> KConfig {
 impl KConfig {
     fn parse(input: &str) -> IResult<&str, Self> {
         let (input, tokens) = many1(alt((
-            map(KMenu::parse, |menu| ConfigToken::KMenu(menu)),
-            map(KOption::parse, |option| ConfigToken::KOption(option)),
-            map(KChoice::parse, |choice| ConfigToken::KChoice(choice)),
             map(KCommentBlock::parse, |cb| ConfigToken::KCommentBlock(cb)),
+            map(KOption::parse, |option| ConfigToken::KOption(option)),
+            map(KMenu::parse, |menu| ConfigToken::KMenu(menu)),
+            map(KChoice::parse, |choice| ConfigToken::KChoice(choice)),
             map(take_source_kconfig, |path| {
                 ConfigToken::Source(path.to_string())
             }),
@@ -149,13 +146,13 @@ enum ChoiceToken {
 
 #[derive(Debug, Default)]
 pub struct KChoice {
-    options:  Vec<KOption>,
-    prompt:   String,
-    depends:  Option<Vec<String>>,
-    help:     Option<String>,
-    optional: bool,
-    option_type:  OptionType,
-    description:  Option<String>,
+    options:     Vec<KOption>,
+    prompt:      String,
+    depends:     Option<Vec<String>>,
+    help:        Option<String>,
+    optional:    bool,
+    option_type: OptionType,
+    description: Option<String>,
 }
 
 impl KChoice {
@@ -169,7 +166,7 @@ impl KChoice {
             map(take_optional, |_| ChoiceToken::Optional),
             map(KOption::parse, |option| ChoiceToken::KOption(option)),
             map(take_comment, |text| ChoiceToken::Comment(text.to_string())),
-            map(take_help, |help| ChoiceToken::Help(help)),
+            map(take_help, |help| ChoiceToken::Help(help.to_string())),
             map(take_depends, |depend| {
                 ChoiceToken::Depend(depend.to_string())
             }),
@@ -196,7 +193,7 @@ impl KChoice {
                 ChoiceToken::Prompt(msg) => kchoice.prompt = msg,
                 ChoiceToken::OptionDefault(val) => depends.push(val),
                 ChoiceToken::KOption(option) => kchoice.options.push(option),
-                ChoiceToken::NewLine => {},
+                ChoiceToken::NewLine => {}
                 ChoiceToken::KCommentBlock(_) => {} // TODO something with this block?
                 ChoiceToken::OptionType((opttype, description)) => {
                     kchoice.description = description;
@@ -319,17 +316,6 @@ impl KMenu {
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
-enum OptionType {
-    #[default]
-    Uninitialized,
-    Bool,
-    Tristate,
-    Str,
-    Int,
-    Hex,
-}
-
 #[derive(Debug)]
 enum CommentBlockToken {
     Depend(String),
@@ -351,7 +337,9 @@ impl KCommentBlock {
         let (input, _) = line_ending(input)?;
 
         let (input, tokens) = many0(alt((
-            map(take_depends, |depend| { CommentBlockToken::Depend(depend.to_string()) }),
+            map(take_depends, |depend| {
+                CommentBlockToken::Depend(depend.to_string())
+            }),
             map(take_line_ending, |_| CommentBlockToken::NewLine),
         )))(input)?;
 
@@ -391,6 +379,30 @@ enum OptionToken {
     Prompt(String),
 }
 
+#[derive(Debug, PartialEq, Default)]
+enum OptionType {
+    #[default]
+    Uninitialized,
+    Bool,
+    Tristate,
+    Str,
+    Int,
+    Hex,
+}
+
+impl std::fmt::Display for OptionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OptionType::Uninitialized => write!(f, "Uninitialized"),
+            OptionType::Bool => write!(f, "bool"),
+            OptionType::Tristate => write!(f, "tristate"),
+            OptionType::Str => write!(f, "str"),
+            OptionType::Int => write!(f, "int"),
+            OptionType::Hex => write!(f, "hex"),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct KOption {
     name:         String,
@@ -407,13 +419,53 @@ pub struct KOption {
     prompt:       Option<String>, // NOTE: See SECCOMP option in arch/Kconfig; this might be a bug?
 }
 
+impl std::fmt::Display for KOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "KOption {{")?;
+        writeln!(f, "  name:         {}", self.name)?;
+        writeln!(f, "  option_type:  {}", self.option_type)?;
+
+        if let Some(range) = &self.range {
+            writeln!(f, "  range:        {}", range)?;
+        }
+        if let Some(description) = &self.description {
+            writeln!(f, "  description:  {}", description)?;
+        }
+        if let Some(depends) = &self.depends {
+            writeln!(f, "  depends:      {:?}", depends)?;
+        }
+        if let Some(selects) = &self.selects {
+            writeln!(f, "  selects:      {:?}", selects)?;
+        }
+        if let Some(help) = &self.help {
+            writeln!(f, "  help:         {}", help)?;
+        }
+        if let Some(def_bool) = &self.def_bool {
+            writeln!(f, "  def_bool:     {:?}", def_bool)?;
+        }
+        if let Some(def_tristate) = &self.def_tristate {
+            writeln!(f, "  def_tristate: {:?}", def_tristate)?;
+        }
+        if let Some(implies) = &self.implies {
+            writeln!(f, "  implies:      {:?}", implies)?;
+        }
+        if let Some(defaults) = &self.defaults {
+            writeln!(f, "  defaults:     {:?}", defaults)?;
+        }
+        if let Some(prompt) = &self.prompt {
+            writeln!(f, "  prompt:       {}", prompt)?;
+        }
+
+        write!(f, "}}")
+    }
+}
+
 impl KOption {
     fn parse(input: &str) -> IResult<&str, Self> {
         let (input, _) = space0(input)?;
-        let (input, _) = alt((tag("menuconfig"), tag("config")))(input)?;
+        let (input, _) = alt((tag("config"), tag("menuconfig")))(input)?;
         let (input, _) = space1(input)?;
         let (input, name) = take_name(input)?;
-        //println!("{}", name);
         let (input, tokens) = many1(alt((
             map(take_prompt, |prompt| {
                 OptionToken::Prompt(prompt.to_string())
@@ -425,7 +477,7 @@ impl KOption {
             map(take_depends, |depend| {
                 OptionToken::Depend(depend.to_string())
             }),
-            map(take_help, |help| OptionToken::Help(help)),
+            map(take_help, |help| OptionToken::Help(help.to_string())),
             map(take_imply, |imply| OptionToken::Imply(imply.to_string())),
             map(take_range, |range| OptionToken::Range(range.to_string())),
             map(take_selects, |select| {
@@ -503,7 +555,6 @@ impl KOption {
             };
         };
 
-        //println!("{:#?}", option);
         Ok((input, option))
     }
 }
@@ -538,14 +589,9 @@ fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
     ))(input)
 }
 
-fn take_mainmenu(input: &str) -> IResult<&str, &str> {
-    let (input, _) = tag("mainmenu")(input)?;
-    let (input, _) = space1(input)?;
-    delimited(tag("\""), take_until("\""), tag("\""))(input)
-}
-
 fn parse_description(input: &str) -> IResult<&str, Option<String>> {
-    let (input, val) = take_until("\n")(input)?;
+    let (input, _) = space0(input)?;
+    let (input, val) = take_continued_line(input)?;
     let description = if val == "" {
         None
     } else {
@@ -575,136 +621,111 @@ fn take_type(input: &str) -> IResult<&str, (OptionType, Option<String>)> {
     Ok((input, (opttype, description)))
 }
 
-fn take_visible(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    let (input, _) = tag("visible")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
-}
-fn take_source_kconfig(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    let (input, _) = tag("source")(input)?;
-    let (input, _) = space1(input)?;
-    delimited(tag("\""), take_until("\""), tag("\""))(input)
-    //take_until("\n")(input)
-}
-fn take_imply(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("imply")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
-}
-fn take_range(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("range")(input)?;
-    let (input, _) = space1(input)?;
+fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, &'a str> {
+    let (input, _) = tuple((space0, tag(str_match), space1))(input)?;
     take_continued_line(input)
 }
 
-fn take_optional(input: &str) -> IResult<&str, bool> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("optional")(input)?;
-    Ok((input, true))
+fn take_mainmenu(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "mainmenu")
+}
+
+fn take_visible(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "visible")
+}
+
+fn take_source_kconfig(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "source")
+}
+
+fn take_imply(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "imply")
+}
+
+fn take_range(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "range")
 }
 
 fn take_prompt(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("prompt")(input)?;
-    let (input, _) = space1(input)?;
-    take_until("\n")(input)
-}
-
-fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
-    let (input, _) = space0(input)?;
-    let (input, _) = tag("if")(input)?;
-    let (input, _) = space1(input)?;
-    let (input, condition) = take_until("\n")(input)?;
-    let (input, config) = KConfig::parse(input)?;
-    //println!("hellO:\n\n```{}```\n\n", input);
-    let (input, _) = tag("endif")(input)?;
-    Ok((input, (condition, config)))
-}
-fn take_comment(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    let (input, _) = tag("#")(input)?;
-    let (input, _) = space0(input)?;
-    take_until("\n")(input)
+    take_tagged_line(input, "prompt")
 }
 
 fn take_default(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("default")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
+    take_tagged_line(input, "default")
 }
 
 fn take_def_tristate(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("def_tristate")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
+    take_tagged_line(input, "def_tristate")
 }
 
 fn take_def_bool(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("def_bool")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
+    take_tagged_line(input, "def_bool")
+}
+
+fn take_depends(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "depends on")
+}
+
+fn take_selects(input: &str) -> IResult<&str, &str> {
+    take_tagged_line(input, "select")
+}
+
+fn take_optional(input: &str) -> IResult<&str, bool> {
+    map(tuple((space0, tag("optional"))), |_| true)(input)
+}
+
+fn take_comment(input: &str) -> IResult<&str, &str> {
+    let (input, _) = space0(input)?;
+    recognize(tuple((tag("#"), take_until("\n"))))(input)
 }
 
 fn take_name(input: &str) -> IResult<&str, &str> {
     take_while1(is_valid_config_name)(input)
 }
 
-fn take_depends(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    let (input, _) = tag("depends on")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
-}
-
 fn take_continued_line(input: &str) -> IResult<&str, &str> {
     // This parser will take all bytes until it encounters a newline which is not escaped.
     recognize(alt((
         map(tag("\n"), |_| ()), // Simplest case of the first char being a newline
-        map(many_till(
-            take(1usize),
-            tuple((
-                not(satisfy(|c| c == '\\')), // Make sure the next char isn't a \
-                take(1usize),                // Take whatever it was to move pos
-                peek(line_ending),           // Take only '\n' or '\r\n'
-            )),
-        ), |_| ()),
+        map(
+            many_till(
+                take(1usize),
+                tuple((
+                    not(satisfy(|c| c == '\\')), // Make sure the next char isn't a \
+                    take(1usize),                // Take whatever it was to move pos
+                    peek(line_ending),           // Take only '\n' or '\r\n'
+                )),
+            ),
+            |_| (),
+        ),
     )))(input)
 }
 
-fn take_selects(input: &str) -> IResult<&str, &str> {
-    let (input, _) = take_line_beginning(input)?;
-    let (input, _) = tag("select")(input)?;
-    let (input, _) = space1(input)?;
-    take_continued_line(input)
-}
-
-fn take_help(input: &str) -> IResult<&str, String> {
+fn take_help(input: &str) -> IResult<&str, &str> {
     let (input, _) = multispace0(input)?;
     let (input, _) = tag("help")(input)?;
     let (input, _) = take_line_ending(input)?;
     let (input, help) = recognize(many_till(
         take(1usize),
         peek(tuple((
-            alt((
-                map(line_ending, |_| ()),
-                map(eof, |_| ()),
-            )),
+            alt((map(line_ending, |_| ()), map(eof, |_| ()))),
             alt((
                 not(satisfy(|c| c == ' ' || c == '\t' || c == '\n' || c == '\r')),
-                map(tuple((multispace1, map(KChoice::parse, |_| ()))), |_| ()),
                 map(eof, |_| ()),
+                map(tuple((multispace1, map(KChoice::parse, |_| ()))), |_| ()),
             )),
         ))),
     ))(input)?;
 
-    Ok((input, help.to_string()))
+    Ok((input, help))
+}
+
+fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
+    let (input, _) = tuple((space0, tag("if"), space1))(input)?;
+    let (input, condition) = take_continued_line(input)?;
+    let (input, config) = KConfig::parse(input)?;
+    let (input, _) = tag("endif")(input)?;
+    Ok((input, (condition, config)))
 }
 
 pub fn load_from_file(path_string: String) -> String {
@@ -715,18 +736,4 @@ pub fn load_from_file(path_string: String) -> String {
             panic!("Failed to open '{}' with error '{}'", path_string, e);
         }
     }
-}
-
-pub fn parse_from_string(input: &str) -> Vec<KOption> {
-    let (input, config) = KConfig::parse(input).unwrap();
-
-    let mut kopts: Vec<KOption> = vec![];
-    if let Some(options) = config.options {
-        for opt in options {
-            kopts.push(opt);
-        }
-    };
-    //println!("SAM found {} config options", kopts.len());
-    //println!("SAMMAS rest of input '{}'", input);
-    kopts
 }
