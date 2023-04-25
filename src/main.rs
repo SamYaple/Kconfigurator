@@ -26,8 +26,8 @@ fn main() {
         //       these macros need to be used to properly generate some of the descriptions.
         // TODO: Some variables are implicitly expected either set from the Makefile or the env
         if let Some(options) = config.options {
-            for opt in options {
-                //println!("{}", opt);
+            for _opt in options {
+                //println!("{}", _opt);
             }
         }
         // TODO: Stage2 where we parse and evaluate the boolean statements against a .config

@@ -151,7 +151,7 @@ impl<'a> KCommentBlock<'a> {
         let (input, _) = line_ending(input)?;
         let (input, _) = many0(alt((
             map(take_depends, |val| push_optvec(&mut k.depends, val)),
-            map(take_comment, |_| {}),
+            map(take_comment, |_|   {}),
         )))(input)?;
         Ok((input, k))
     }
@@ -192,8 +192,8 @@ impl<'a> KOption<'a> {
             map(take_range,        |val| k.range  = Some(val)),
             map(take_help,         |val| k.help   = Some(val)),
             map(take_prompt,       |val| k.prompt = Some(val)),
-            map(take_comment,      |_| {}),
-            map(take_line_ending,  |_| {}),
+            map(take_comment,      |_|   {}),
+            map(take_line_ending,  |_|   {}),
             map(take_type,         |(opttype, desc)| {
                 k.description = desc;
                 k.option_type = opttype;
@@ -219,42 +219,45 @@ impl<'a> KOption<'a> {
 
 impl std::fmt::Display for KOption<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "KOption {{")?;
-        writeln!(f, "  name:         {}", self.name)?;
-        writeln!(f, "  option_type:  {}", self.option_type)?;
+        macro_rules! bf {
+            ($field:ident) => {
+                if let Some(value) = &self.$field {
+                    writeln!(f, "{: >12}: {}", stringify!($field), value)?;
+                }
+            };
+        }
+        macro_rules! df {
+            ($field:ident) => {
+                if let Some(value) = &self.$field {
+                    writeln!(f, "{: >12}: {:?}", stringify!($field), value)?;
+                }
+            };
+        }
 
-        if let Some(range) = &self.range {
-            writeln!(f, "  range:        {}", range)?;
-        }
-        if let Some(description) = &self.description {
-            writeln!(f, "  description:  {}", description)?;
-        }
-        if let Some(depends) = &self.depends {
-            writeln!(f, "  depends:      {:?}", depends)?;
-        }
-        if let Some(selects) = &self.selects {
-            writeln!(f, "  selects:      {:?}", selects)?;
-        }
-        if let Some(help) = &self.help {
-            writeln!(f, "  help:         {}", help)?;
-        }
-        if let Some(def_bool) = &self.def_bool {
-            writeln!(f, "  def_bool:     {:?}", def_bool)?;
-        }
-        if let Some(def_tristate) = &self.def_tristate {
-            writeln!(f, "  def_tristate: {:?}", def_tristate)?;
-        }
-        if let Some(implies) = &self.implies {
-            writeln!(f, "  implies:      {:?}", implies)?;
-        }
-        if let Some(defaults) = &self.defaults {
-            writeln!(f, "  defaults:     {:?}", defaults)?;
-        }
-        if let Some(prompt) = &self.prompt {
-            writeln!(f, "  prompt:       {}", prompt)?;
-        }
+        writeln!(f, "KOption {{")?;
+        writeln!(f, "{: >12}: {}", "name", self.name)?;
+        writeln!(f, "{: >12}: {}", "type", self.option_type)?;
+
+        bf!(range);
+        bf!(description);
+        df!(depends);
+        df!(selects);
+        bf!(help);
+        df!(def_bool);
+        df!(def_tristate);
+        df!(implies);
+        df!(defaults);
+        bf!(prompt);
 
         write!(f, "}}")
+    }
+}
+
+fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
+    if let Some(ref mut vec) = opt_vec {
+        vec.push(val);
+    } else {
+        *opt_vec = Some(vec![val]);
     }
 }
 
@@ -404,7 +407,7 @@ fn take_help(input: &str) -> IResult<&str, &str> {
     let (input, _) = multispace0(input)?;
     let (input, _) = tag("help")(input)?;
     let (input, _) = take_line_ending(input)?;
-    let (input, help) = recognize(many_till(
+    recognize(many_till(
         take(1usize),
         peek(tuple((
             alt((map(line_ending, |_| ()), map(eof, |_| ()))),
@@ -414,9 +417,7 @@ fn take_help(input: &str) -> IResult<&str, &str> {
                 map(tuple((multispace1, map(KChoice::parse, |_| ()))), |_| ()),
             )),
         ))),
-    ))(input)?;
-
-    Ok((input, help))
+    ))(input)
 }
 
 fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
@@ -437,27 +438,21 @@ pub fn load_from_file(path_string: String) -> String {
     }
 }
 
+
+// TODO convert this to take complete
 pub fn take_kconfig(input: &str) -> KConfig {
     //let (remaining, config) = KConfig::parse(input).unwrap();
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
                 //eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
-                eprintln!("SAMMAS ERROR Unprocessed input");
+                panic!("SAMMAS ERROR Unprocessed input");
             }
             return config;
         }
         Err(error) => {
-            eprintln!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
-            KConfig::default()
+            panic!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
         }
     }
 }
 
-fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
-    if let Some(ref mut vec) = opt_vec {
-        vec.push(val);
-    } else {
-        *opt_vec = Some(vec![val]);
-    }
-}
