@@ -20,113 +20,44 @@ enum ConfigToken {
 }
 
 #[derive(Debug, Default)]
-pub struct KConfig {
-    pub options:  Option<Vec<KOption>>,
-    choices:  Option<Vec<KChoice>>,
-    configs:  Option<Vec<String>>,
-    blocks:   Option<Vec<(String, KConfig)>>,
-    menus:    Option<Vec<KMenu>>,
-    mainmenu: Option<String>,
+pub struct KConfig<'a> {
+    pub options:  Option<Vec<KOption<'a>>>,
+    choices:  Option<Vec<KChoice<'a>>>,
+    configs:  Option<Vec<&'a str>>,
+    blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
+    menus:    Option<Vec<KMenu<'a>>>,
+    mainmenu: Option<&'a str>,
 }
 
-pub fn take_kconfig(input: &str) -> KConfig {
-    //let (remaining, config) = KConfig::parse(input).unwrap();
-    match KConfig::parse(input) {
-        Ok((remaining, config)) => {
-            if remaining != "" {
-                eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
-                eprintln!("SAMMAS ERROR Unprocessed input");
-            }
-            return config;
-        }
-        Err(error) => {
-            eprintln!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
-            KConfig::default()
-        }
-    }
-}
-
-impl KConfig {
+impl KConfig<'_> {
     fn parse(input: &str) -> IResult<&str, Self> {
         let (input, tokens) = many1(alt((
-            map(KCommentBlock::parse, |cb| ConfigToken::KCommentBlock(cb)),
-            map(KOption::parse, |option| ConfigToken::KOption(option)),
-            map(KMenu::parse, |menu| ConfigToken::KMenu(menu)),
-            map(KChoice::parse, |choice| ConfigToken::KChoice(choice)),
-            map(take_source_kconfig, |path| {
-                ConfigToken::Source(path.to_string())
-            }),
-            map(take_mainmenu, |text| {
-                ConfigToken::MainMenu(text.to_string())
-            }),
-            map(take_comment, |text| ConfigToken::Comment(text.to_string())),
-            map(take_block, |(cond, config)| {
-                ConfigToken::Block((cond.to_string(), config))
-            }),
-            map(take_line_ending, |_| ConfigToken::NewLine),
+            map(KCommentBlock::parse, |val| ConfigToken::KCommentBlock(val)),
+            map(KOption::parse,       |val| ConfigToken::KOption(val)),
+            map(KMenu::parse,         |val| ConfigToken::KMenu(val)),
+            map(KChoice::parse,       |val| ConfigToken::KChoice(val)),
+            map(take_source_kconfig,  |val| ConfigToken::Source(val)),
+            map(take_mainmenu,        |val| ConfigToken::MainMenu(val)),
+            map(take_comment,         |val| ConfigToken::Comment(val)),
+            map(take_block,           |val| ConfigToken::Block(val)),
+            map(take_line_ending,     |_|   ConfigToken::NewLine),
         )))(input)?;
 
-        let mut blocks: Vec<(String, KConfig)> = vec![];
-        let mut configs: Vec<String> = vec![];
-        let mut options: Vec<KOption> = vec![];
-        let mut choices: Vec<KChoice> = vec![];
-        let mut menus: Vec<KMenu> = vec![];
-        let mut mainmenu_description: Option<String> = None;
+        let mut k = Self::default();
         for token in tokens {
             match token {
-                ConfigToken::Block(block) => blocks.push(block),
-                ConfigToken::KChoice(choice) => choices.push(choice),
-                ConfigToken::KOption(option) => options.push(option),
-                ConfigToken::KMenu(menu) => menus.push(menu),
-                ConfigToken::Comment(_) => {} //println!("comment found: '{}'", comment),
+                ConfigToken::Block(block)    => push_optvec(&mut k.blocks,  block),
+                ConfigToken::KChoice(choice) => push_optvec(&mut k.choices, choice),
+                ConfigToken::KOption(option) => push_optvec(&mut k.options, option),
+                ConfigToken::KMenu(menu)     => push_optvec(&mut k.menus,   menu),
+                ConfigToken::Source(path)    => push_optvec(&mut k.configs, path),
+                ConfigToken::MainMenu(text)  => k.mainmenu = Some(text),
+                ConfigToken::Comment(_)       => {} //println!("comment found: '{}'", comment),
+                ConfigToken::NewLine          => {}
                 ConfigToken::KCommentBlock(_) => {} // TODO something with this block?
-                ConfigToken::NewLine => {}
-                ConfigToken::MainMenu(text) => mainmenu_description = Some(text),
-                ConfigToken::Source(path) => {
-                    configs.push(path);
-                }
-                //ConfigToken::Source(path) => {
-                //    if path.ends_with(".includes") || path.contains('$') {
-                //        // TODO special case all the things filtered here
-                //        println!("FIXME -- properly include path: '{}'", path);
-                //    } else {
-                //        let content = load_from_file(path);
-                //        let config = take_kconfig(&content);
-                //        configs.push(config);
-                //    }
-                //},
             };
         }
-        let menus = if !menus.is_empty() { Some(menus) } else { None };
-        let configs = if !configs.is_empty() {
-            Some(configs)
-        } else {
-            None
-        };
-        let blocks = if !blocks.is_empty() {
-            Some(blocks)
-        } else {
-            None
-        };
-        let choices = if !choices.is_empty() {
-            Some(choices)
-        } else {
-            None
-        };
-        let options = if !options.is_empty() {
-            Some(options)
-        } else {
-            None
-        };
-        let config = Self {
-            options:  options,
-            choices:  choices,
-            configs:  configs,
-            menus:    menus,
-            blocks:   blocks,
-            mainmenu: mainmenu_description,
-        };
-        Ok((input, config))
+        Ok((input, k))
     }
 }
 
@@ -735,5 +666,30 @@ pub fn load_from_file(path_string: String) -> String {
         Err(e) => {
             panic!("Failed to open '{}' with error '{}'", path_string, e);
         }
+    }
+}
+
+pub fn take_kconfig(input: &str) -> KConfig {
+    //let (remaining, config) = KConfig::parse(input).unwrap();
+    match KConfig::parse(input) {
+        Ok((remaining, config)) => {
+            if remaining != "" {
+                eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
+                eprintln!("SAMMAS ERROR Unprocessed input");
+            }
+            return config;
+        }
+        Err(error) => {
+            eprintln!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
+            KConfig::default()
+        }
+    }
+}
+
+fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
+    if let Some(ref mut vec) = opt_vec {
+        vec.push(val);
+    } else {
+        *opt_vec = Some(vec![val]);
     }
 }
