@@ -114,8 +114,8 @@ impl<'a> KMenu<'a> {
         let mut k = Self::default();
 
         let (input, _) = tag("menu")(input)?;
-        let (input, description) = parse_description(input)?;
-        k.description = description.unwrap();
+        let (input, description) = take_continued_line(input)?;
+        k.description = description;
         let (input, _) = many1(alt((
             map(take_block,           |val| push_optvec(&mut k.blocks,  val)),
             map(KChoice::parse,       |val| push_optvec(&mut k.choices, val)),
@@ -213,12 +213,14 @@ impl<'a> KOption<'a> {
             };
         };
 
+        //println!("SAMMAS {:?}", k);
         Ok((input, k))
     }
 }
 
 impl std::fmt::Display for KOption<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // playing with macros
         macro_rules! bf {
             ($field:ident) => {
                 if let Some(value) = &self.$field {
@@ -254,6 +256,7 @@ impl std::fmt::Display for KOption<'_> {
 }
 
 fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
+    // this pattern seems wrong to break into a function... maybe its fine
     if let Some(ref mut vec) = opt_vec {
         vec.push(val);
     } else {
@@ -277,42 +280,26 @@ fn is_lowercase(chr: u8) -> bool {
 }
 
 // TODO: Fixup this function to match only uppercase followed by all of these matches
-fn is_valid_config_name(c: char) -> bool {
+fn is_config_name(c: char) -> bool {
     is_uppercase(c as u8) || is_digit(c as u8) || c == '_' || is_lowercase(c as u8)
+}
+
+fn take_name(input: &str) -> IResult<&str, &str> {
+    take_while1(is_config_name)(input)
 }
 
 fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
     alt((
+        map(tag("bool"),     |_| OptionType::Bool),
+        map(tag("hex"),      |_| OptionType::Hex),
+        map(tag("int"),      |_| OptionType::Int),
+        map(tag("string"),   |_| OptionType::Str),
         map(tag("tristate"), |_| OptionType::Tristate),
-        map(tag("string"), |_| OptionType::Str),
-        map(tag("bool"), |_| OptionType::Bool),
-        map(tag("int"), |_| OptionType::Int),
-        map(tag("hex"), |_| OptionType::Hex),
     ))(input)
 }
 
-fn parse_description(input: &str) -> IResult<&str, Option<&str>> {
-    let (input, _) = space0(input)?;
-    let (input, val) = take_continued_line(input)?;
-    let description = if val == "" {
-        None
-    } else {
-        Some(val)
-    };
-    Ok((input, description))
-}
-
-fn take_line_ending(input: &str) -> IResult<&str, &str> {
-    let (input, _) = many1(tuple((space0, line_ending)))(input)?;
-    Ok((input, ""))
-}
-
-fn take_line_beginning(input: &str) -> IResult<&str, &str> {
-    space0(input)
-}
-
 fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>)> {
-    let (input, _) = take_line_beginning(input)?;
+    let (input, _) = space0(input)?;
     let (input, opttype) = parse_opttype(input)?;
     let (input, val) = take_continued_line(input)?;
     let description = if val == "" {
@@ -321,6 +308,10 @@ fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>)> {
         Some(val)
     };
     Ok((input, (opttype, description)))
+}
+
+fn take_line_ending(input: &str) -> IResult<&str, &str> {
+    recognize(many1(tuple((space0, line_ending))))(input)
 }
 
 fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, &'a str> {
@@ -381,12 +372,10 @@ fn take_comment(input: &str) -> IResult<&str, &str> {
     recognize(tuple((tag("#"), take_until("\n"))))(input)
 }
 
-fn take_name(input: &str) -> IResult<&str, &str> {
-    take_while1(is_valid_config_name)(input)
-}
 
 fn take_continued_line(input: &str) -> IResult<&str, &str> {
     // This parser will take all bytes until it encounters a newline which is not escaped.
+    let (input, _) = space0(input)?;
     recognize(alt((
         map(tag("\n"), |_| ()), // Simplest case of the first char being a newline
         map(
@@ -440,13 +429,29 @@ pub fn load_from_file(path_string: String) -> String {
 
 
 // TODO convert this to take complete
-pub fn take_kconfig(input: &str) -> KConfig {
+pub fn _take_kconfig(input: &str) -> KConfig {
     //let (remaining, config) = KConfig::parse(input).unwrap();
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
                 //eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
                 panic!("SAMMAS ERROR Unprocessed input");
+            }
+            return config;
+        }
+        Err(error) => {
+            panic!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
+        }
+    }
+}
+
+pub fn take_kconfig(input: &str) -> KConfig {
+    //let (remaining, config) = KConfig::parse(input).unwrap();
+    match KConfig::parse(input) {
+        Ok((remaining, config)) => {
+            if remaining != "" {
+                eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
+                //panic!("SAMMAS ERROR Unprocessed input");
             }
             return config;
         }
