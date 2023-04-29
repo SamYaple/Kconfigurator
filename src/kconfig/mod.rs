@@ -43,7 +43,7 @@ pub struct KConfig<'a> {
 impl<'a> KConfig<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
         let mut k = Self::default();
-        let (input, _) = many1(alt((
+        let (input, _) = many0(alt((
             map(take_block,           |val| push_optvec(&mut k.blocks,  val)),
             map(KChoice::parse,       |val| push_optvec(&mut k.choices, val)),
             map(KMenu::parse,         |val| push_optvec(&mut k.menus,   val)),
@@ -63,6 +63,7 @@ pub struct KChoice<'a> {
     options:     Vec<KOption<'a>>,
     prompt:      &'a str,
     depends:     Option<Vec<&'a str>>,
+    defaults:    Option<Vec<&'a str>>,
     help:        Option<&'a str>,
     optional:    bool,
     option_type: OptionType,
@@ -80,6 +81,7 @@ impl<'a> KChoice<'a> {
         let (input, _) = many1(alt((
             map(KOption::parse,       |val| k.options.push(val)),
             map(take_depends,         |val| push_optvec(&mut k.depends,  val)),
+            map(take_default,         |val| push_optvec(&mut k.defaults, val)),
             map(take_optional,        |_|   k.optional = false),
             map(take_prompt,          |val| k.prompt = val),
             map(take_help,            |val| k.help = Some(val)),
@@ -150,8 +152,9 @@ impl<'a> KCommentBlock<'a> {
         k.description = description;
         let (input, _) = line_ending(input)?;
         let (input, _) = many0(alt((
-            map(take_depends, |val| push_optvec(&mut k.depends, val)),
-            map(take_comment, |_|   {}),
+            map(take_depends,     |val| push_optvec(&mut k.depends, val)),
+            map(take_comment,     |_|   {}),
+            map(take_line_ending, |_|   {}),
         )))(input)?;
         Ok((input, k))
     }
@@ -429,29 +432,13 @@ pub fn load_from_file(path_string: String) -> String {
 
 
 // TODO convert this to take complete
-pub fn _take_kconfig(input: &str) -> KConfig {
-    //let (remaining, config) = KConfig::parse(input).unwrap();
-    match KConfig::parse(input) {
-        Ok((remaining, config)) => {
-            if remaining != "" {
-                //eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
-                panic!("SAMMAS ERROR Unprocessed input");
-            }
-            return config;
-        }
-        Err(error) => {
-            panic!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
-        }
-    }
-}
-
 pub fn take_kconfig(input: &str) -> KConfig {
     //let (remaining, config) = KConfig::parse(input).unwrap();
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
-                eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
-                //panic!("SAMMAS ERROR Unprocessed input");
+                //eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
+                panic!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
             }
             return config;
         }
