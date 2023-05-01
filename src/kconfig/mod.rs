@@ -294,8 +294,16 @@ impl std::fmt::Display for KOption<'_> {
         }
         macro_rules! df {
             ($field:ident) => {
-                if let Some(value) = &self.$field {
-                    writeln!(f, "{: >12}: {:?}", stringify!($field), value)?;
+                if let Some(values) = &self.$field {
+                    write!(f, "{: >12}:", stringify!($field))?;
+                    if values.len() > 1 {
+                        writeln!(f)?;
+                        for val in values {
+                            writeln!(f, "        - {}", val)?;
+                        }
+                    } else {
+                        writeln!(f, " {}", values[0])?;
+                    }
                 }
             };
         }
@@ -306,13 +314,14 @@ impl std::fmt::Display for KOption<'_> {
 
         bf!(range);
         bf!(description);
+        bf!(prompt);
+
         df!(depends);
+        df!(defaults);
         df!(selects);
+        df!(implies);
         df!(def_bool);
         df!(def_tristate);
-        df!(implies);
-        df!(defaults);
-        bf!(prompt);
 
         if let Some(text) = &self.help {
             writeln!(f, "{: >12}:", "help")?;
@@ -323,6 +332,7 @@ impl std::fmt::Display for KOption<'_> {
         write!(f, "==========")
     }
 }
+
 fn count_whitespace(s: &str) -> usize {
     s.chars()
         .take_while(|c| c == &' ' || c == &'\t')
@@ -467,7 +477,6 @@ fn take_comment(input: &str) -> IResult<&str, &str> {
     let (input, _) = space0(input)?;
     recognize(tuple((tag("#"), take_until("\n"))))(input)
 }
-
 
 fn take_continued_line(input: &str) -> IResult<&str, &str> {
     // This parser will take all bytes until it encounters a newline which is not escaped.
