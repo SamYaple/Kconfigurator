@@ -32,7 +32,7 @@ impl std::fmt::Display for OptionType {
 
 #[derive(Debug, Default)]
 pub struct KConfig<'a> {
-    pub options:  Option<Vec<KOption<'a>>>,
+    options:  Option<Vec<KOption<'a>>>,
     choices:  Option<Vec<KChoice<'a>>>,
     configs:  Option<Vec<&'a str>>,
     blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
@@ -55,6 +55,34 @@ impl<'a> KConfig<'a> {
             map(take_line_ending,     |_|   {}),
         )))(input)?;
         Ok((input, k))
+    }
+
+    pub fn collect_options(&self) -> Vec<&KOption<'a>> {
+        let mut options: Vec<&KOption<'a>> = Vec::new();
+
+        if let Some(opts) = &self.options {
+            options.extend(opts.iter());
+        }
+
+        if let Some(choices) = &self.choices {
+            for choice in choices {
+                options.extend(choice.options.iter());
+            }
+        }
+
+        if let Some(blocks) = &self.blocks {
+            for (_name, block) in blocks {
+                options.extend(block.collect_options());
+            }
+        }
+
+        if let Some(menus) = &self.menus {
+            for menu in menus {
+                options.extend(menu.collect_options());
+            }
+        }
+
+        options
     }
 }
 
@@ -89,8 +117,11 @@ impl<'a> KChoice<'a> {
             map(take_comment,         |_|   {}),
             map(take_line_ending,     |_|   {}),
             map(take_type,            |(opttype, desc)| {
-                k.description = desc;
                 k.option_type = opttype;
+                let desc = desc.trim_end(); // NOTE: This feels suspect here... this whole block does
+                if !desc.is_empty() {
+                    k.description = Some(desc);
+                }
             }),
         )))(input)?;
         let (input, _) = space0(input)?;
@@ -133,6 +164,34 @@ impl<'a> KMenu<'a> {
         let (input, _) = tag("endmenu")(input)?;
         Ok((input, k))
     }
+
+    pub fn collect_options(&self) -> Vec<&KOption<'a>> {
+        let mut options: Vec<&KOption<'a>> = Vec::new();
+
+        if let Some(opts) = &self.options {
+            options.extend(opts.iter());
+        }
+
+        if let Some(choices) = &self.choices {
+            for choice in choices {
+                options.extend(choice.options.iter());
+            }
+        }
+
+        if let Some(menus) = &self.menus {
+            for menu in menus {
+                options.extend(menu.collect_options());
+            }
+        }
+
+        if let Some(blocks) = &self.blocks {
+            for (_name, block) in blocks {
+                options.extend(block.collect_options());
+            }
+        }
+
+        options
+    }
 }
 
 #[derive(Debug, Default)]
@@ -162,18 +221,18 @@ impl<'a> KCommentBlock<'a> {
 
 #[derive(Debug, Default)]
 pub struct KOption<'a> {
-    name:         &'a str,
-    range:        Option<&'a str>,
+    pub name:         &'a str,
+    pub range:        Option<&'a str>,
     option_type:  OptionType,
-    description:  Option<&'a str>,
-    depends:      Option<Vec<&'a str>>,
-    selects:      Option<Vec<&'a str>>,
-    help:         Option<&'a str>,
-    def_bool:     Option<Vec<&'a str>>,
-    def_tristate: Option<Vec<&'a str>>,
-    implies:      Option<Vec<&'a str>>,
-    defaults:     Option<Vec<&'a str>>,
-    prompt:       Option<&'a str>, // NOTE: See SECCOMP option in arch/Kconfig; this might be a bug?
+    pub description:  Option<&'a str>,
+    pub depends:      Option<Vec<&'a str>>,
+    pub selects:      Option<Vec<&'a str>>,
+    pub help:         Option<&'a str>,
+    pub def_bool:     Option<Vec<&'a str>>,
+    pub def_tristate: Option<Vec<&'a str>>,
+    pub implies:      Option<Vec<&'a str>>,
+    pub defaults:     Option<Vec<&'a str>>,
+    pub prompt:       Option<&'a str>, // NOTE: See SECCOMP option in arch/Kconfig; this might be a bug?
 }
 
 impl<'a> KOption<'a> {
@@ -198,8 +257,11 @@ impl<'a> KOption<'a> {
             map(take_comment,      |_|   {}),
             map(take_line_ending,  |_|   {}),
             map(take_type,         |(opttype, desc)| {
-                k.description = desc;
                 k.option_type = opttype;
+                let desc = desc.trim_end(); // NOTE: This feels suspect here... this whole block does
+                if !desc.is_empty() {
+                    k.description = Some(desc);
+                }
             }),
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
@@ -216,7 +278,6 @@ impl<'a> KOption<'a> {
             };
         };
 
-        //println!("SAMMAS {:?}", k);
         Ok((input, k))
     }
 }
@@ -301,16 +362,11 @@ fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
     ))(input)
 }
 
-fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>)> {
+fn take_type(input: &str) -> IResult<&str, (OptionType, &str)> {
     let (input, _) = space0(input)?;
     let (input, opttype) = parse_opttype(input)?;
     let (input, val) = take_continued_line(input)?;
-    let description = if val == "" {
-        None
-    } else {
-        Some(val)
-    };
-    Ok((input, (opttype, description)))
+    Ok((input, (opttype, val)))
 }
 
 fn take_line_ending(input: &str) -> IResult<&str, &str> {
@@ -447,4 +503,3 @@ pub fn take_kconfig(input: &str) -> KConfig {
         }
     }
 }
-

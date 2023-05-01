@@ -15,7 +15,7 @@ fn main() {
     let matches = search(&Path::new(dir));
 
     for path in matches {
-        eprintln!("LOADED FILE: {}", path.display());
+        //eprintln!("LOADED FILE: {}", path.display());
         let content = kconfig::load_from_file(path.display().to_string());
         let config = kconfig::take_kconfig(&content);
 
@@ -25,10 +25,11 @@ fn main() {
         // TODO: Kconfig.include includes lots of macros to use for string replacement
         //       these macros need to be used to properly generate some of the descriptions.
         // TODO: Some variables are implicitly expected either set from the Makefile or the env
-        if let Some(options) = config.options {
-            for _opt in options {
-                //println!("{}", _opt);
+        for _opt in config.collect_options() {
+            if let Some(_) = _opt.description {
+                println!("{}", _opt);
             }
+            //println!("{}", _opt);
         }
         // TODO: Stage2 where we parse and evaluate the boolean statements against a .config
     }
