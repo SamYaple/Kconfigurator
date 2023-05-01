@@ -232,7 +232,7 @@ pub struct KOption<'a> {
     pub def_tristate: Option<Vec<&'a str>>,
     pub implies:      Option<Vec<&'a str>>,
     pub defaults:     Option<Vec<&'a str>>,
-    pub prompt:       Option<&'a str>, // NOTE: See SECCOMP option in arch/Kconfig; this might be a bug?
+    pub prompt:       Option<&'a str>,
 }
 
 impl<'a> KOption<'a> {
@@ -300,7 +300,7 @@ impl std::fmt::Display for KOption<'_> {
             };
         }
 
-        writeln!(f, "KOption {{")?;
+        writeln!(f, "KOption===")?;
         writeln!(f, "{: >12}: {}", "name", self.name)?;
         writeln!(f, "{: >12}: {}", "type", self.option_type)?;
 
@@ -308,15 +308,52 @@ impl std::fmt::Display for KOption<'_> {
         bf!(description);
         df!(depends);
         df!(selects);
-        bf!(help);
         df!(def_bool);
         df!(def_tristate);
         df!(implies);
         df!(defaults);
         bf!(prompt);
 
-        write!(f, "}}")
+        if let Some(text) = &self.help {
+            writeln!(f, "{: >12}:", "help")?;
+            for l in cleanup_raw_help(text).split('\n') {
+                writeln!(f, "          {}", l)?;
+            }
+        }
+        write!(f, "==========")
     }
+}
+fn count_whitespace(s: &str) -> usize {
+    s.chars()
+        .take_while(|c| c == &' ' || c == &'\t')
+        .map(|c| if c == ' ' { 1 } else { 8 })
+        .sum()
+}
+
+fn prefix_spaces(n: usize) -> String {
+    let mut result = String::with_capacity(n);
+    for _ in 0..n {
+        result.push(' ');
+    }
+    result
+}
+
+fn cleanup_raw_help(text: &str) -> String {
+    // Preserve the whitespace structure while trimming the text in the help functions
+    let init_ws = count_whitespace(text);
+    let mut help = String::new();
+    for l in text.split('\n') {
+        let line_ws = count_whitespace(l);
+        if line_ws < init_ws {
+            help += "\n";
+        } else {
+            let padding = line_ws - init_ws;
+            help += &prefix_spaces(padding);
+            help += l.trim_start();
+            help += "\n";
+        }
+    }
+    help.trim_end().to_string()
 }
 
 fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
