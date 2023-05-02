@@ -285,24 +285,19 @@ impl<'a> KOption<'a> {
 impl std::fmt::Display for KOption<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // playing with macros
-        macro_rules! bf {
+        macro_rules! print_if_some {
             ($field:ident) => {
                 if let Some(value) = &self.$field {
                     writeln!(f, "{: >12}: {}", stringify!($field), value)?;
                 }
             };
         }
-        macro_rules! df {
+        macro_rules! print_if_some_list {
             ($field:ident) => {
                 if let Some(values) = &self.$field {
-                    write!(f, "{: >12}:", stringify!($field))?;
-                    if values.len() > 1 {
-                        writeln!(f)?;
-                        for val in values {
-                            writeln!(f, "        - {}", val)?;
-                        }
-                    } else {
-                        writeln!(f, " {}", values[0])?;
+                    writeln!(f, "{: >12}:", stringify!($field))?;
+                    for val in values {
+                        writeln!(f, "        - {}", cleanup_raw_line(val))?;
                     }
                 }
             };
@@ -312,16 +307,16 @@ impl std::fmt::Display for KOption<'_> {
         writeln!(f, "{: >12}: {}", "name", self.name)?;
         writeln!(f, "{: >12}: {}", "type", self.option_type)?;
 
-        bf!(range);
-        bf!(description);
-        bf!(prompt);
+        print_if_some!(range);
+        print_if_some!(description);
+        print_if_some!(prompt);
 
-        df!(depends);
-        df!(defaults);
-        df!(selects);
-        df!(implies);
-        df!(def_bool);
-        df!(def_tristate);
+        print_if_some_list!(depends);
+        print_if_some_list!(defaults);
+        print_if_some_list!(selects);
+        print_if_some_list!(implies);
+        print_if_some_list!(def_bool);
+        print_if_some_list!(def_tristate);
 
         if let Some(text) = &self.help {
             writeln!(f, "{: >12}:", "help")?;
@@ -344,6 +339,18 @@ fn prefix_spaces(n: usize) -> String {
     let mut result = String::with_capacity(n);
     for _ in 0..n {
         result.push(' ');
+    }
+    result
+}
+
+fn cleanup_raw_line(text: &str) -> String {
+    let mut result = String::new();
+    for l in text.split('\n') {
+        let mut cleaned_line = l.trim_start().to_string();
+        if cleaned_line.chars().last() == Some('\\') {
+            cleaned_line.pop();
+        }
+        result.push_str(&cleaned_line);
     }
     result
 }
@@ -479,17 +486,21 @@ fn take_comment(input: &str) -> IResult<&str, &str> {
 }
 
 fn take_continued_line(input: &str) -> IResult<&str, &str> {
-    // This parser will take all bytes until it encounters a newline which is not escaped.
+    // This parser will take all bytes until it encounters a newline which is not escaped. or a
+    // comment
     let (input, _) = space0(input)?;
     recognize(alt((
         map(tag("\n"), |_| ()), // Simplest case of the first char being a newline
         map(
             many_till(
                 take(1usize),
-                tuple((
-                    not(satisfy(|c| c == '\\')), // Make sure the next char isn't a \
-                    take(1usize),                // Take whatever it was to move pos
-                    peek(line_ending),           // Take only '\n' or '\r\n'
+                alt((
+                    peek(tag("#")), // This is now a comment block and we can exit
+                    recognize(tuple((
+                        not(satisfy(|c| c == '\\')), // Make sure the next char isn't a \
+                        take(1usize),                // Take whatever it was to move pos
+                        peek(line_ending),           // Take only '\n' or '\r\n'
+                    ))),
                 )),
             ),
             |_| (),
