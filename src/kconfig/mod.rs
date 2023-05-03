@@ -1,9 +1,9 @@
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take, take_until, take_while1};
 use nom::character::complete::{line_ending, multispace0, multispace1, satisfy, space0, space1};
-use nom::combinator::{eof, map, not, peek, recognize};
+use nom::combinator::{eof, map, not, peek, recognize, opt};
 use nom::multi::{many0, many1, many_till};
-use nom::sequence::tuple;
+use nom::sequence::{tuple, delimited};
 use nom::IResult;
 
 #[derive(Debug, PartialEq, Default)]
@@ -96,6 +96,7 @@ pub struct KChoice<'a> {
     optional:    bool,
     option_type: OptionType,
     description: Option<&'a str>,
+    conditional: Option<String>,
 }
 
 impl<'a> KChoice<'a> {
@@ -116,12 +117,10 @@ impl<'a> KChoice<'a> {
             map(KCommentBlock::parse, |_|   {}), // TODO: something useful with these?
             map(take_comment,         |_|   {}),
             map(take_line_ending,     |_|   {}),
-            map(take_type,            |(opttype, desc)| {
+            map(take_type,            |(opttype, desc, cond)| {
                 k.option_type = opttype;
-                let desc = desc.trim_end(); // NOTE: This feels suspect here... this whole block does
-                if !desc.is_empty() {
-                    k.description = Some(desc);
-                }
+                k.description = desc;
+                k.conditional = cond;
             }),
         )))(input)?;
         let (input, _) = space0(input)?;
@@ -224,6 +223,7 @@ pub struct KOption<'a> {
     pub name:         &'a str,
     pub range:        Option<&'a str>,
     option_type:  OptionType,
+    pub conditional:  Option<String>,
     pub description:  Option<&'a str>,
     pub depends:      Option<Vec<&'a str>>,
     pub selects:      Option<Vec<&'a str>>,
@@ -256,15 +256,17 @@ impl<'a> KOption<'a> {
             map(take_prompt,       |val| k.prompt = Some(val)),
             map(take_comment,      |_|   {}),
             map(take_line_ending,  |_|   {}),
-            map(take_type,         |(opttype, desc)| {
+            map(take_type,            |(opttype, desc, cond)| {
                 k.option_type = opttype;
-                let desc = desc.trim_end(); // NOTE: This feels suspect here... this whole block does
-                if !desc.is_empty() {
-                    k.description = Some(desc);
-                }
+                k.description = desc;
+                k.conditional = cond;
             }),
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
+        //println!("{}", k.name);
+        //if k.name == "SUSPEND_FREEZER" {
+        //    eprintln!("MMMMMMMMM input: {}", input);
+        //}
 
         if k.option_type == OptionType::Uninitialized {
             if let Some(_) = k.def_bool {
@@ -309,6 +311,7 @@ impl std::fmt::Display for KOption<'_> {
 
         print_if_some!(range);
         print_if_some!(description);
+        print_if_some!(conditional);
         print_if_some!(prompt);
 
         print_if_some_list!(depends);
@@ -416,11 +419,69 @@ fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
     ))(input)
 }
 
-fn take_type(input: &str) -> IResult<&str, (OptionType, &str)> {
+fn parse_kstring(input: &str) -> IResult<&str, &str> {
+    let (input, _) = space0(input)?;
+    let (input, kstring) = alt((
+        // Try to recognize double-quoted strings, accounting for escaped double-quotes: \"
+        delimited(
+            tag("\""),
+            recognize(many_till(
+                take(1usize),
+                recognize(tuple((
+                    not(satisfy(|c| c == '\\')),
+                    take(1usize),
+                    peek(tag("\"")),
+                ))),
+            )),
+            tag("\""),
+        ),
+        // Try to recognize single-quoted strings, accounting for escaped single-quotes: \'
+        delimited(
+            tag("'"),
+            recognize(many_till(
+                take(1usize),
+                recognize(tuple((
+                    not(satisfy(|c| c == '\\')),
+                    take(1usize),
+                    peek(tag("'")),
+                ))),
+            )),
+            tag("'"),
+        ),
+    ))(input)?;
+    Ok((input, kstring))
+}
+
+fn convert_continued_line(text: &str) -> Option<String> {
+    let mut result = String::new();
+    for line in text.split('\n') {
+        result.push_str(line.trim_start());
+        if result.ends_with('\\') {
+            result.pop();
+        }
+    }
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+fn recognize_conditional(input: &str) -> IResult<&str, Option<String>> {
+    let (input, _) = space0(input)?;
+    let (input, text) = take_continued_line(input)?;
+    let conditional = convert_continued_line(text);
+    // TODO: Remove the `if` at the front of the conditional
+    Ok((input, conditional))
+}
+
+fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>, Option<String>)> {
     let (input, _) = space0(input)?;
     let (input, opttype) = parse_opttype(input)?;
-    let (input, val) = take_continued_line(input)?;
-    Ok((input, (opttype, val)))
+    let (input, description) = opt(parse_kstring)(input)?;
+    let (input, conditional) = recognize_conditional(input)?;
+    Ok((input, (opttype, description, conditional)))
 }
 
 fn take_line_ending(input: &str) -> IResult<&str, &str> {
@@ -499,7 +560,7 @@ fn take_continued_line(input: &str) -> IResult<&str, &str> {
                     recognize(tuple((
                         not(satisfy(|c| c == '\\')), // Make sure the next char isn't a \
                         take(1usize),                // Take whatever it was to move pos
-                        peek(line_ending),           // Take only '\n' or '\r\n'
+                        peek(line_ending),           // Exit many_till if the next char is a newline
                     ))),
                 )),
             ),
@@ -519,7 +580,14 @@ fn take_help(input: &str) -> IResult<&str, &str> {
             alt((
                 not(satisfy(|c| c == ' ' || c == '\t' || c == '\n' || c == '\r')),
                 map(eof, |_| ()),
-                map(tuple((multispace1, map(KChoice::parse, |_| ()))), |_| ()),
+                map(tuple((
+                    multispace1,
+                    alt(( // TODO: panic! these branches are huge time eaters. Its most of the runtime
+                        map(KChoice::parse, |_| ()),
+                        map(KOption::parse, |_| ()),
+                        map(KMenu::parse,   |_| ()),
+                    )),
+                )), |_| ()),
             )),
         ))),
     ))(input)
