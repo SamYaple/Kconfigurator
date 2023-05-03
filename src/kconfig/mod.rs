@@ -346,6 +346,25 @@ fn prefix_spaces(n: usize) -> String {
     result
 }
 
+fn cleanup_raw_help(text: &str) -> String {
+    // Preserve the whitespace structure while trimming the text in the help functions
+    let init_ws = count_whitespace(text);
+    let mut help = String::new();
+    for l in text.split('\n') {
+        let line_ws = count_whitespace(l);
+        if line_ws < init_ws {
+            help += l.trim_start();
+            help += "\n";
+        } else {
+            let padding = line_ws - init_ws;
+            help += &prefix_spaces(padding);
+            help += l.trim_start();
+            help += "\n";
+        }
+    }
+    help.trim_end().to_string()
+}
+
 fn cleanup_raw_line(text: &str) -> String {
     let mut result = String::new();
     for l in text.split('\n') {
@@ -356,24 +375,6 @@ fn cleanup_raw_line(text: &str) -> String {
         result.push_str(&cleaned_line);
     }
     result
-}
-
-fn cleanup_raw_help(text: &str) -> String {
-    // Preserve the whitespace structure while trimming the text in the help functions
-    let init_ws = count_whitespace(text);
-    let mut help = String::new();
-    for l in text.split('\n') {
-        let line_ws = count_whitespace(l);
-        if line_ws < init_ws {
-            help += "\n";
-        } else {
-            let padding = line_ws - init_ws;
-            help += &prefix_spaces(padding);
-            help += l.trim_start();
-            help += "\n";
-        }
-    }
-    help.trim_end().to_string()
 }
 
 fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
