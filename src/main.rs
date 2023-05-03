@@ -14,24 +14,22 @@ fn main() {
     let dir = &args[1];
     let matches = search(&Path::new(dir));
 
+    // janky yaml output for loading into python...
+    println!("kconfigs:");
     for path in matches {
-        //eprintln!("LOADED FILE: {}", path.display());
+        print!("  \"{}\":", path.display());
         let content = kconfig::load_from_file(path.display().to_string());
         let config = kconfig::take_kconfig(&content);
 
-        // Rip into the top level config, this is not recursize but the `config` object does
-        // contain all of the parsed information without any trailing, unprocessed data.
-        // TODO: The individual string options have not been trimmed for whitespace
-        // TODO: Kconfig.include includes lots of macros to use for string replacement
-        //       these macros need to be used to properly generate some of the descriptions.
-        // TODO: Some variables are implicitly expected either set from the Makefile or the env
-        for _opt in config.collect_options() {
-            if let Some(_) = _opt.description {
-                println!("{}", _opt);
+        let opts = config.collect_options();
+        if opts.is_empty() {
+            println!(" []");
+        } else {
+            println!();
+            for opt in opts {
+                println!("{}", opt);
             }
-            //println!("{}", _opt);
         }
-        // TODO: Stage2 where we parse and evaluate the boolean statements against a .config
     }
 }
 

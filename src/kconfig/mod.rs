@@ -20,12 +20,12 @@ enum OptionType {
 impl std::fmt::Display for OptionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OptionType::Uninitialized => write!(f, "Uninitialized"),
-            OptionType::Tristate      => write!(f, "tristate"),
-            OptionType::Bool          => write!(f, "bool"),
-            OptionType::Str           => write!(f, "str"),
-            OptionType::Int           => write!(f, "int"),
-            OptionType::Hex           => write!(f, "hex"),
+            OptionType::Uninitialized => write!(f, "\"Uninitialized\""),
+            OptionType::Tristate      => write!(f, "\"tristate\""),
+            OptionType::Bool          => write!(f, "\"bool\""),
+            OptionType::Str           => write!(f, "\"str\""),
+            OptionType::Int           => write!(f, "\"int\""),
+            OptionType::Hex           => write!(f, "\"hex\""),
         }
     }
 }
@@ -71,7 +71,7 @@ impl<'a> KConfig<'a> {
         }
 
         if let Some(blocks) = &self.blocks {
-            for (_name, block) in blocks {
+            for (_cond, block) in blocks {
                 options.extend(block.collect_options());
             }
         }
@@ -263,10 +263,6 @@ impl<'a> KOption<'a> {
             }),
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
-        //println!("{}", k.name);
-        //if k.name == "SUSPEND_FREEZER" {
-        //    eprintln!("MMMMMMMMM input: {}", input);
-        //}
 
         if k.option_type == OptionType::Uninitialized {
             if let Some(_) = k.def_bool {
@@ -284,30 +280,47 @@ impl<'a> KOption<'a> {
     }
 }
 
+fn escape_quoted(input: &str) -> String {
+    let mut result = String::with_capacity(input.len() + 2);
+    result.push('"');
+
+    for c in input.chars() {
+        match c {
+            '"' | '\\' => result.push('\\'),
+            _ => {}
+        }
+        result.push(c);
+    }
+
+    result.push('"');
+    result
+}
+
 impl std::fmt::Display for KOption<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // playing with macros
         macro_rules! print_if_some {
             ($field:ident) => {
                 if let Some(value) = &self.$field {
-                    writeln!(f, "{: >12}: {}", stringify!($field), value)?;
+                    let quoted = escape_quoted(&cleanup_raw_line(value));
+                    writeln!(f, "      {}: {}", stringify!($field), quoted)?;
                 }
             };
         }
         macro_rules! print_if_some_list {
             ($field:ident) => {
                 if let Some(values) = &self.$field {
-                    writeln!(f, "{: >12}:", stringify!($field))?;
+                    writeln!(f, "      {}:", stringify!($field))?;
                     for val in values {
-                        writeln!(f, "        - {}", cleanup_raw_line(val))?;
+                        let quoted = escape_quoted(&cleanup_raw_line(val));
+                        writeln!(f, "        - {}", quoted)?;
                     }
                 }
             };
         }
 
-        writeln!(f, "KOption===")?;
-        writeln!(f, "{: >12}: {}", "name", self.name)?;
-        writeln!(f, "{: >12}: {}", "type", self.option_type)?;
+        writeln!(f, "    - name: {}", escape_quoted(self.name))?;
+        writeln!(f, "      type: {}", self.option_type)?;
 
         print_if_some!(range);
         print_if_some!(description);
@@ -322,12 +335,12 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some_list!(def_tristate);
 
         if let Some(text) = &self.help {
-            writeln!(f, "{: >12}:", "help")?;
+            writeln!(f, "      help: |")?;
             for l in cleanup_raw_help(text).split('\n') {
-                writeln!(f, "          {}", l)?;
+                writeln!(f, "        {}", l)?;
             }
         }
-        write!(f, "==========")
+        Ok(())
     }
 }
 
@@ -422,7 +435,7 @@ fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
 
 fn parse_kstring(input: &str) -> IResult<&str, &str> {
     let (input, _) = space0(input)?;
-    let (input, kstring) = alt((
+    let (input, kstring) = recognize(alt((
         // Try to recognize double-quoted strings, accounting for escaped double-quotes: \"
         delimited(
             tag("\""),
@@ -449,7 +462,7 @@ fn parse_kstring(input: &str) -> IResult<&str, &str> {
             )),
             tag("'"),
         ),
-    ))(input)?;
+    )))(input)?;
     Ok((input, kstring))
 }
 
