@@ -96,7 +96,7 @@ pub struct KChoice<'a> {
     optional:    bool,
     option_type: OptionType,
     description: Option<&'a str>,
-    conditional: Option<String>,
+    conditional: Option<&'a str>,
 }
 
 impl<'a> KChoice<'a> {
@@ -222,8 +222,8 @@ impl<'a> KCommentBlock<'a> {
 pub struct KOption<'a> {
     pub name:         &'a str,
     pub range:        Option<&'a str>,
-    option_type:  OptionType,
-    pub conditional:  Option<String>,
+    option_type:      OptionType,
+    pub conditional:  Option<&'a str>,
     pub description:  Option<&'a str>,
     pub depends:      Option<Vec<&'a str>>,
     pub selects:      Option<Vec<&'a str>>,
@@ -466,7 +466,7 @@ fn parse_kstring(input: &str) -> IResult<&str, &str> {
     Ok((input, kstring))
 }
 
-fn convert_continued_line(text: &str) -> Option<String> {
+fn _convert_continued_line(text: &str) -> Option<String> {
     let mut result = String::new();
     for line in text.split('\n') {
         result.push_str(line.trim_start());
@@ -482,19 +482,23 @@ fn convert_continued_line(text: &str) -> Option<String> {
     }
 }
 
-fn recognize_conditional(input: &str) -> IResult<&str, Option<String>> {
+fn take_conditional(input: &str) -> IResult<&str, Option<&str>> {
     let (input, _) = space0(input)?;
     let (input, text) = take_continued_line(input)?;
-    let conditional = convert_continued_line(text);
-    // TODO: Remove the `if` at the front of the conditional
+    let text = text.trim_start().trim_end();
+
+    let mut conditional: Option<&str> = None;
+    if text != "" {
+        conditional = Some(text);
+    }
     Ok((input, conditional))
 }
 
-fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>, Option<String>)> {
+fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>, Option<&str>)> {
     let (input, _) = space0(input)?;
     let (input, opttype) = parse_opttype(input)?;
     let (input, description) = opt(parse_kstring)(input)?;
-    let (input, conditional) = recognize_conditional(input)?;
+    let (input, conditional) = take_conditional(input)?;
     Ok((input, (opttype, description, conditional)))
 }
 
