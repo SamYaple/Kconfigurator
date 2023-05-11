@@ -1,9 +1,11 @@
+mod expr;
+
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take, take_until, take_while1};
 use nom::character::complete::{line_ending, multispace0, multispace1, satisfy, space0, space1};
 use nom::combinator::{eof, map, not, peek, recognize, opt};
 use nom::multi::{many0, many1, many_till};
-use nom::sequence::{tuple, delimited};
+use nom::sequence::{preceded, tuple, delimited};
 use nom::IResult;
 
 #[derive(Debug, PartialEq, Default)]
@@ -226,7 +228,7 @@ pub struct KOption<'a> {
     pub conditional:  Option<&'a str>,
     pub description:  Option<&'a str>,
     pub depends:      Option<Vec<&'a str>>,
-    pub selects:      Option<Vec<&'a str>>,
+    pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>,
     pub help:         Option<&'a str>,
     pub def_bool:     Option<Vec<&'a str>>,
     pub def_tristate: Option<Vec<&'a str>>,
@@ -264,6 +266,11 @@ impl<'a> KOption<'a> {
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
 
+        //println!("SAMMAS: {}", k.name);
+        //if k.name == "PROVE_LOCKING" {
+        //    println!("SAMMAS: {}", input);
+        //}
+
         if k.option_type == OptionType::Uninitialized {
             if let Some(_) = k.def_bool {
                 k.option_type = OptionType::Bool;
@@ -275,7 +282,6 @@ impl<'a> KOption<'a> {
                 //panic!("option_type was never found for Option '{}'", option.name);
             };
         };
-
         Ok((input, k))
     }
 }
@@ -318,6 +324,21 @@ impl std::fmt::Display for KOption<'_> {
                 }
             };
         }
+        macro_rules! print_if_some_list_cond {
+            ($field:ident) => {
+                if let Some(values) = &self.$field {
+                    writeln!(f, "      {}:", stringify!($field))?;
+                    for (expr, cond) in values {
+                        let esc_expr = escape_quoted(expr);
+                        writeln!(f, "        - expression: {}", esc_expr)?;
+                        if let Some(c) = cond {
+                            let esc_c = escape_quoted(c);
+                            writeln!(f, "          condition: {}", esc_c)?;
+                        }
+                    }
+                }
+            };
+        }
 
         writeln!(f, "    - name: {}", escape_quoted(self.name))?;
         writeln!(f, "      type: {}", self.option_type)?;
@@ -329,7 +350,8 @@ impl std::fmt::Display for KOption<'_> {
 
         print_if_some_list!(depends);
         print_if_some_list!(defaults);
-        print_if_some_list!(selects);
+        //print_if_some_list!(selects);
+        print_if_some_list_cond!(selects);
         print_if_some_list!(implies);
         print_if_some_list!(def_bool);
         print_if_some_list!(def_tristate);
@@ -551,8 +573,25 @@ fn take_depends(input: &str) -> IResult<&str, &str> {
     take_tagged_line(input, "depends on")
 }
 
-fn take_selects(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "select")
+fn take_expr(input: &str) -> IResult<&str, expr::Expr> {
+    expr::expr(input)
+}
+
+fn take_cond(input: &str) -> IResult<&str, &str> {
+    preceded(
+        tuple((
+            expr::special_space,
+            tag("if"),
+            expr::special_space,
+        )),
+        recognize(take_expr)
+    )(input)
+}
+
+fn take_selects(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    let (input, expr) = preceded(tuple((space0, tag("select"), space1)), recognize(take_expr))(input)?;
+    let (input, cond) = opt(take_cond)(input)?;
+    Ok((input, (expr, cond)))
 }
 
 fn take_optional(input: &str) -> IResult<&str, bool> {
@@ -636,7 +675,6 @@ pub fn take_kconfig(input: &str) -> KConfig {
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
-                //eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
                 panic!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
             }
             return config;
