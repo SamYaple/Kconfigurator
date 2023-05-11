@@ -675,7 +675,7 @@ pub fn take_kconfig(input: &str) -> KConfig {
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
-                panic!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
+                eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
             }
             return config;
         }

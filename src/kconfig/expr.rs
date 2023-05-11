@@ -8,7 +8,7 @@ use nom::{
     combinator::{opt, map, recognize},
     sequence::{delimited, preceded, tuple},
     branch::alt,
-    multi::{many0, many1},
+    multi::many0,
 };
 
 #[derive(Debug, PartialEq)]
