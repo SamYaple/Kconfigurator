@@ -456,26 +456,31 @@ fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
 }
 
 fn parse_kstring(input: &str) -> IResult<&str, &str> {
+    // NOTE: this will take newlines and other chars which are not valid
     preceded(
         space0,
-        recognize(alt((
+        alt((
+            // we check for double qoute strings, careful to preserve escaped \"
             delimited(
                 tag("\""),
-                many0(alt((
+                recognize(many0(alt((
                     take_while1(|c| c != '\\' && c != '"'),
-                    tag("\\\""),
-                ))),
+                    tag("\\\""), // We have encoutered an escaped quote -- \"
+                    tag("\\"),   // We didn't find an end to our string, take -- \\
+                )))),
                 tag("\""),
             ),
+            // we check for single qoute strings, careful to preserve escaped \'
             delimited(
                 tag("'"),
-                many0(alt((
+                recognize(many0(alt((
                     take_while1(|c| c != '\\' && c != '\''),
-                    tag("\\'"),
-                ))),
+                    tag("\\'"), // We have encoutered an escaped quote -- \'
+                    tag("\\"),  // We didn't find an end to our string, take -- \\
+                )))),
                 tag("'"),
             ),
-        )))
+        ))
     )(input)
 }
 
