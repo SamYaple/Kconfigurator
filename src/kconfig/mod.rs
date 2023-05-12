@@ -266,10 +266,10 @@ impl<'a> KOption<'a> {
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
 
-        //println!("SAMMAS: {}", k.name);
-        //if k.name == "PROVE_LOCKING" {
-        //    println!("SAMMAS: {}", input);
-        //}
+        println!("SAMMES: {}", k.name);
+        if k.name == "CMDLINE_OVERRIDE" {
+            println!("SAMMIS: {}", input);
+        }
 
         if k.option_type == OptionType::Uninitialized {
             if let Some(_) = k.def_bool {
@@ -674,7 +674,7 @@ pub fn take_kconfig(input: &str) -> KConfig {
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
-                eprintln!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
+                panic!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
             }
             return config;
         }

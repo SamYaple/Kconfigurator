@@ -28,14 +28,15 @@ pub fn special_space(input: &str) -> IResult<&str, &str> {
 }
 
 fn take_shell_cmd(input: &str) -> IResult<&str, &str> {
-    recognize(delimited(
+    let (input, ret) = recognize(delimited(
         tag("$("),
         recognize(many1(alt((
             take_shell_cmd,
-            take_until(")"),
+            take_while1(|c| c != ')' && c != '$'),
         )))),
         tag(")"),
-    ))(input)
+    ))(input)?;
+    Ok((input, ret))
 }
 
 fn take_operation(input: &str) -> IResult<&str, &str> {
@@ -77,8 +78,8 @@ fn var(input: &str) -> IResult<&str, Expr> {
             tuple((
                 alt((
                     take_name,
-                    parse_kstring,
                     take_shell_cmd,
+                    parse_kstring,
                 )),
                 opt(alt((
                     take_state,
