@@ -92,7 +92,7 @@ impl<'a> KConfig<'a> {
 pub struct KChoice<'a> {
     options:     Vec<KOption<'a>>,
     prompt:      &'a str,
-    depends:     Option<Vec<&'a str>>,
+    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
     defaults:    Option<Vec<&'a str>>,
     help:        Option<&'a str>,
     optional:    bool,
@@ -139,7 +139,7 @@ pub struct KMenu<'a> {
     configs:     Option<Vec<&'a str>>,
     blocks:      Option<Vec<(&'a str, KConfig<'a>)>>,
     description: &'a str,
-    depends:     Option<Vec<&'a str>>,
+    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
     visible:     Option<Vec<&'a str>>,
 }
 
@@ -198,7 +198,7 @@ impl<'a> KMenu<'a> {
 #[derive(Debug, Default)]
 pub struct KCommentBlock<'a> {
     description: &'a str,
-    depends:     Option<Vec<&'a str>>,
+    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
 }
 
 impl<'a> KCommentBlock<'a> {
@@ -227,7 +227,7 @@ pub struct KOption<'a> {
     option_type:      OptionType,
     pub conditional:  Option<&'a str>,
     pub description:  Option<&'a str>,
-    pub depends:      Option<Vec<&'a str>>,
+    pub depends:      Option<Vec<(&'a str, Option<&'a str>)>>,
     pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>,
     pub help:         Option<&'a str>,
     pub def_bool:     Option<Vec<&'a str>>,
@@ -329,10 +329,10 @@ impl std::fmt::Display for KOption<'_> {
                 if let Some(values) = &self.$field {
                     writeln!(f, "      {}:", stringify!($field))?;
                     for (expr, cond) in values {
-                        let esc_expr = escape_quoted(expr);
+                        let esc_expr = escape_quoted(&cleanup_raw_line(expr));
                         writeln!(f, "        - expression: {}", esc_expr)?;
                         if let Some(c) = cond {
-                            let esc_c = escape_quoted(c);
+                            let esc_c = escape_quoted(&cleanup_raw_line(c));
                             writeln!(f, "          condition: {}", esc_c)?;
                         }
                     }
@@ -348,7 +348,7 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some!(conditional);
         print_if_some!(prompt);
 
-        print_if_some_list!(depends);
+        print_if_some_list_cond!(depends);
         print_if_some_list!(defaults);
         //print_if_some_list!(selects);
         print_if_some_list_cond!(selects);
@@ -504,23 +504,11 @@ fn _convert_continued_line(text: &str) -> Option<String> {
     }
 }
 
-fn take_conditional(input: &str) -> IResult<&str, Option<&str>> {
-    let (input, _) = space0(input)?;
-    let (input, text) = take_continued_line(input)?;
-    let text = text.trim_start().trim_end();
-
-    let mut conditional: Option<&str> = None;
-    if text != "" {
-        conditional = Some(text);
-    }
-    Ok((input, conditional))
-}
-
 fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>, Option<&str>)> {
     let (input, _) = space0(input)?;
     let (input, opttype) = parse_opttype(input)?;
     let (input, description) = opt(parse_kstring)(input)?;
-    let (input, conditional) = take_conditional(input)?;
+    let (input, conditional) = opt(take_cond)(input)?;
     Ok((input, (opttype, description, conditional)))
 }
 
@@ -531,6 +519,19 @@ fn take_line_ending(input: &str) -> IResult<&str, &str> {
 fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, &'a str> {
     let (input, _) = tuple((space0, tag(str_match), space1))(input)?;
     take_continued_line(input)
+}
+
+fn take_named_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, (&'a str, Option<&'a str>)> {
+    let (input, expr) = preceded(
+        tuple((
+            space0,
+            tag(str_match),
+            space1,
+        )),
+        recognize(take_expr),
+    )(input)?;
+    let (input, cond) = opt(take_cond)(input)?;
+    Ok((input, (expr, cond)))
 }
 
 fn take_mainmenu(input: &str) -> IResult<&str, &str> {
@@ -569,8 +570,8 @@ fn take_def_bool(input: &str) -> IResult<&str, &str> {
     take_tagged_line(input, "def_bool")
 }
 
-fn take_depends(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "depends on")
+fn take_depends(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    take_named_line(input, "depends on")
 }
 
 fn take_expr(input: &str) -> IResult<&str, expr::Expr> {
@@ -589,9 +590,7 @@ fn take_cond(input: &str) -> IResult<&str, &str> {
 }
 
 fn take_selects(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    let (input, expr) = preceded(tuple((space0, tag("select"), space1)), recognize(take_expr))(input)?;
-    let (input, cond) = opt(take_cond)(input)?;
-    Ok((input, (expr, cond)))
+    take_named_line(input, "select")
 }
 
 fn take_optional(input: &str) -> IResult<&str, bool> {

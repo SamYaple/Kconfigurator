@@ -1,14 +1,15 @@
+use crate::kconfig::parse_kstring;
 use crate::kconfig::take_name;
 use crate::kconfig::is_digit;
 
 use nom::{
     IResult,
     bytes::complete::{tag, take_while1, take_until},
-    character::complete::{space0, space1},
+    character::complete::space1,
     combinator::{opt, map, recognize},
     sequence::{delimited, preceded, tuple},
     branch::alt,
-    multi::many0,
+    multi::{many0, many1},
 };
 
 #[derive(Debug, PartialEq)]
@@ -27,11 +28,14 @@ pub fn special_space(input: &str) -> IResult<&str, &str> {
 }
 
 fn take_shell_cmd(input: &str) -> IResult<&str, &str> {
-    delimited(
+    recognize(delimited(
         tag("$("),
-        take_until(")"),
+        recognize(many1(alt((
+            take_shell_cmd,
+            take_until(")"),
+        )))),
         tag(")"),
-    )(input)
+    ))(input)
 }
 
 fn take_operation(input: &str) -> IResult<&str, &str> {
@@ -50,6 +54,7 @@ fn take_operation(input: &str) -> IResult<&str, &str> {
         )),
         alt((
             take_while1(|c| is_digit(c as u8)),  // opttype: `int`
+            parse_kstring,
             take_name, // TODO: This should take a kstring, hex, or bool...
         )),
     )(input)
@@ -72,6 +77,7 @@ fn var(input: &str) -> IResult<&str, Expr> {
             tuple((
                 alt((
                     take_name,
+                    parse_kstring,
                     take_shell_cmd,
                 )),
                 opt(alt((
@@ -86,9 +92,9 @@ fn var(input: &str) -> IResult<&str, Expr> {
 
 fn parens(input: &str) -> IResult<&str, Expr> {
     delimited(
-        tuple((space0, tag("("))),
+        tuple((special_space, tag("("))),
         expr,
-        tuple((space0, tag(")"))),
+        tuple((special_space, tag(")"))),
     )(input)
 }
 
@@ -97,7 +103,7 @@ fn factor(input: &str) -> IResult<&str, Expr> {
         var,
         parens,
         map(
-            preceded(tuple((space0, tag("!"), special_space)), factor),
+            preceded(tuple((special_space, tag("!"), special_space)), factor),
             |e| Expr::Not(Box::new(e)),
         ),
     ))(input)
@@ -106,7 +112,7 @@ fn factor(input: &str) -> IResult<&str, Expr> {
 fn term(input: &str) -> IResult<&str, Expr> {
     let (input, init) = factor(input)?;
     let (input, terms) = many0(
-        preceded(tuple((space1, tag("&&"), special_space)), term)
+        preceded(tuple((special_space, tag("&&"), special_space)), term)
     )(input)?;
 
     let result = terms.into_iter().fold(init, |acc, e| Expr::And(Box::new(acc), Box::new(e)));
@@ -117,7 +123,7 @@ fn term(input: &str) -> IResult<&str, Expr> {
 pub fn expr(input: &str) -> IResult<&str, Expr> {
     let (input, init) = term(input)?;
     let (input, terms) = many0(
-        preceded(tuple((space1, tag("||"), special_space)), term)
+        preceded(tuple((special_space, tag("||"), special_space)), term)
     )(input)?;
 
     let result = terms.into_iter().fold(init, |acc, e| Expr::Or(Box::new(acc), Box::new(e)));
