@@ -407,7 +407,10 @@ fn cleanup_raw_line(text: &str) -> String {
         if cleaned_line.chars().last() == Some('\\') {
             cleaned_line.pop();
         }
-        result.push_str(&cleaned_line);
+        if !result.is_empty() {
+            result.push_str(&" ");
+        }
+        result.push_str(&cleaned_line.trim_end());
     }
     result
 }
