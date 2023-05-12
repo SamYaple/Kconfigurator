@@ -266,10 +266,10 @@ impl<'a> KOption<'a> {
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
 
-        println!("SAMMES: {}", k.name);
-        if k.name == "CMDLINE_OVERRIDE" {
-            println!("SAMMIS: {}", input);
-        }
+        //println!("SAMMES: {}", k.name);
+        //if k.name == "RPMSG_CTRL" {
+        //    println!("SAMMIS: {}", input);
+        //}
 
         if k.option_type == OptionType::Uninitialized {
             if let Some(_) = k.def_bool {
@@ -456,36 +456,27 @@ fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
 }
 
 fn parse_kstring(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    let (input, kstring) = recognize(alt((
-        // Try to recognize double-quoted strings, accounting for escaped double-quotes: \"
-        delimited(
-            tag("\""),
-            recognize(many_till(
-                take(1usize),
-                recognize(tuple((
-                    not(satisfy(|c| c == '\\')),
-                    take(1usize),
-                    peek(tag("\"")),
+    preceded(
+        space0,
+        recognize(alt((
+            delimited(
+                tag("\""),
+                many0(alt((
+                    take_while1(|c| c != '\\' && c != '"'),
+                    tag("\\\""),
                 ))),
-            )),
-            tag("\""),
-        ),
-        // Try to recognize single-quoted strings, accounting for escaped single-quotes: \'
-        delimited(
-            tag("'"),
-            recognize(many_till(
-                take(1usize),
-                recognize(tuple((
-                    not(satisfy(|c| c == '\\')),
-                    take(1usize),
-                    peek(tag("'")),
+                tag("\""),
+            ),
+            delimited(
+                tag("'"),
+                many0(alt((
+                    take_while1(|c| c != '\\' && c != '\''),
+                    tag("\\'"),
                 ))),
-            )),
-            tag("'"),
-        ),
-    )))(input)?;
-    Ok((input, kstring))
+                tag("'"),
+            ),
+        )))
+    )(input)
 }
 
 fn _convert_continued_line(text: &str) -> Option<String> {

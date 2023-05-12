@@ -93,9 +93,9 @@ fn var(input: &str) -> IResult<&str, Expr> {
 
 fn parens(input: &str) -> IResult<&str, Expr> {
     delimited(
-        tuple((special_space, tag("("))),
+        tuple((special_space, tag("("), special_space)),
         expr,
-        tuple((special_space, tag(")"))),
+        tuple((special_space, tag(")"), special_space)),
     )(input)
 }
 
