@@ -93,7 +93,7 @@ pub struct KChoice<'a> {
     options:     Vec<KOption<'a>>,
     prompt:      &'a str,
     depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
-    defaults:    Option<Vec<&'a str>>,
+    defaults:    Option<Vec<(&'a str, Option<&'a str>)>>,
     help:        Option<&'a str>,
     optional:    bool,
     option_type: OptionType,
@@ -223,18 +223,18 @@ impl<'a> KCommentBlock<'a> {
 #[derive(Debug, Default)]
 pub struct KOption<'a> {
     pub name:         &'a str,
-    pub range:        Option<&'a str>,
     option_type:      OptionType,
-    pub conditional:  Option<&'a str>,
     pub description:  Option<&'a str>,
+    pub conditional:  Option<&'a str>,
     pub depends:      Option<Vec<(&'a str, Option<&'a str>)>>,
     pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>,
+    pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>,
+    pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>,
+    pub implies:      Option<Vec<(&'a str, Option<&'a str>)>>,
+    pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>,
     pub help:         Option<&'a str>,
-    pub def_bool:     Option<Vec<&'a str>>,
-    pub def_tristate: Option<Vec<&'a str>>,
-    pub implies:      Option<Vec<&'a str>>,
-    pub defaults:     Option<Vec<&'a str>>,
     pub prompt:       Option<&'a str>,
+    pub range:        Option<&'a str>,
 }
 
 impl<'a> KOption<'a> {
@@ -267,7 +267,7 @@ impl<'a> KOption<'a> {
         )))(input)?;
 
         //println!("SAMMES: {}", k.name);
-        //if k.name == "RPMSG_CTRL" {
+        //if k.name == "OF_DMA_DEFAULT_COHERENT" {
         //    println!("SAMMIS: {}", input);
         //}
 
@@ -343,18 +343,17 @@ impl std::fmt::Display for KOption<'_> {
         writeln!(f, "    - name: {}", escape_quoted(self.name))?;
         writeln!(f, "      type: {}", self.option_type)?;
 
-        print_if_some!(range);
         print_if_some!(description);
         print_if_some!(conditional);
         print_if_some!(prompt);
+        print_if_some!(range);
 
         print_if_some_list_cond!(depends);
-        print_if_some_list!(defaults);
-        //print_if_some_list!(selects);
+        print_if_some_list_cond!(defaults);
         print_if_some_list_cond!(selects);
-        print_if_some_list!(implies);
-        print_if_some_list!(def_bool);
-        print_if_some_list!(def_tristate);
+        print_if_some_list_cond!(implies);
+        print_if_some_list_cond!(def_bool);
+        print_if_some_list_cond!(def_tristate);
 
         if let Some(text) = &self.help {
             writeln!(f, "      help: |")?;
@@ -422,6 +421,11 @@ fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
     } else {
         *opt_vec = Some(vec![val]);
     }
+}
+
+fn is_hex(chr: u8) -> bool {
+    // matches ASCII digits A-Fa-f0-9
+    (chr >= 0x41 && chr <= 0x46) || (chr >= 0x61 && chr <= 0x66) || (chr >= 0x30 && chr <= 0x39)
 }
 
 fn is_digit(chr: u8) -> bool {
@@ -537,16 +541,38 @@ fn take_mainmenu(input: &str) -> IResult<&str, &str> {
     take_tagged_line(input, "mainmenu")
 }
 
-fn take_visible(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "visible")
-}
-
 fn take_source_kconfig(input: &str) -> IResult<&str, &str> {
     take_tagged_line(input, "source")
 }
 
-fn take_imply(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "imply")
+fn take_visible(input: &str) -> IResult<&str, &str> {
+    let (input, expr) = tuple((
+        space0,
+        tag("visible"),
+        space1,
+    ))(input)?;
+    let (input, cond) = take_cond(input)?;
+    Ok((input, cond))
+}
+
+fn take_imply(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    take_named_line(input, "imply")
+}
+
+fn take_default(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    take_named_line(input, "default")
+}
+
+fn take_def_tristate(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    take_named_line(input, "def_tristate")
+}
+
+fn take_def_bool(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    take_named_line(input, "def_bool")
+}
+
+fn take_depends(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    take_named_line(input, "depends on")
 }
 
 fn take_range(input: &str) -> IResult<&str, &str> {
@@ -555,22 +581,6 @@ fn take_range(input: &str) -> IResult<&str, &str> {
 
 fn take_prompt(input: &str) -> IResult<&str, &str> {
     take_tagged_line(input, "prompt")
-}
-
-fn take_default(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "default")
-}
-
-fn take_def_tristate(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "def_tristate")
-}
-
-fn take_def_bool(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "def_bool")
-}
-
-fn take_depends(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "depends on")
 }
 
 fn take_expr(input: &str) -> IResult<&str, expr::Expr> {
@@ -649,8 +659,8 @@ fn take_help(input: &str) -> IResult<&str, &str> {
 }
 
 fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
-    let (input, _) = tuple((space0, tag("if"), space1))(input)?;
-    let (input, condition) = take_continued_line(input)?;
+    let (input, condition) = take_cond(input)?;
+    let (input, _) = multispace1(input)?;
     let (input, config) = KConfig::parse(input)?;
     let (input, _) = tag("endif")(input)?;
     Ok((input, (condition, config)))

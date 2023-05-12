@@ -1,6 +1,7 @@
 use crate::kconfig::parse_kstring;
 use crate::kconfig::take_name;
 use crate::kconfig::is_digit;
+use crate::kconfig::is_hex;
 
 use nom::{
     IResult,
@@ -27,16 +28,38 @@ pub fn special_space(input: &str) -> IResult<&str, &str> {
     ))))(input)
 }
 
-fn take_shell_cmd(input: &str) -> IResult<&str, &str> {
+fn take_parens(input: &str) -> IResult<&str, &str> {
     let (input, ret) = recognize(delimited(
-        tag("$("),
-        recognize(many1(alt((
-            take_shell_cmd,
-            take_while1(|c| c != ')' && c != '$'),
+        alt((tag("$("), tag("("))),
+        recognize(many0(alt((
+            take_parens,
+            take_while1(|c| c != '$' && c != '(' && c != ')' && c != '\\'),
+            alt((
+                tag("\\$"),
+                tag("\\("),
+                tag("\\)"),
+                tag("\\"),
+                tag("$"),
+                tag("("),
+            )),
         )))),
         tag(")"),
     ))(input)?;
     Ok((input, ret))
+}
+
+fn take_signed_int(input: &str) -> IResult<&str, &str> {
+    recognize(tuple((
+        opt(tag("-")),
+        take_while1(|c| is_digit(c as u8)),
+    )))(input)
+}
+
+fn take_hex(input: &str) -> IResult<&str, &str> {
+    recognize(tuple((
+        tag("0x"),
+        take_while1(|c| is_hex(c as u8)),
+    )))(input)
 }
 
 fn take_operation(input: &str) -> IResult<&str, &str> {
@@ -54,7 +77,8 @@ fn take_operation(input: &str) -> IResult<&str, &str> {
             special_space,
         )),
         alt((
-            take_while1(|c| is_digit(c as u8)),  // opttype: `int`
+            take_hex,        // opttype: `hex`
+            take_signed_int, // opttype: `int`
             parse_kstring,
             take_name, // TODO: This should take a kstring, hex, or bool...
         )),
@@ -78,7 +102,9 @@ fn var(input: &str) -> IResult<&str, Expr> {
             tuple((
                 alt((
                     take_name,
-                    take_shell_cmd,
+                    take_hex,        // opttype: `hex`
+                    take_signed_int, // opttype: `int`
+                    take_parens,
                     parse_kstring,
                 )),
                 opt(alt((
