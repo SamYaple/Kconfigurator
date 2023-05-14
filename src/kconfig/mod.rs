@@ -203,20 +203,27 @@ pub struct KCommentBlock<'a> {
 
 impl<'a> KCommentBlock<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let mut k = Self::default();
+        let (input, description) = preceded(
+            tuple((
+                space0,
+                tag("comment"),
+                space1,
+            )),
+            take_until("\n")  // NOTE: AFAIK these comment blocks cannot be multiline
+        )(input)?;
 
-        let (input, _) = space0(input)?;
-        let (input, _) = tag("comment")(input)?;
-        let (input, _) = space1(input)?;
-        let (input, description) = take_until("\n")(input)?;
-        k.description = description;
-        let (input, _) = line_ending(input)?;
+        // TODO: This pattern is better than before, but still has a smell
+        let mut depends: Option<Vec<(&str, Option<&str>)>> = None;
         let (input, _) = many0(alt((
-            map(take_depends,     |val| push_optvec(&mut k.depends, val)),
-            map(take_comment,     |_|   {}),
-            map(take_line_ending, |_|   {}),
+            map(take_depends,     |v| push_optvec(&mut depends, v)),
+            map(take_comment,     |_| {}),
+            map(take_line_ending, |_| {}),
         )))(input)?;
-        Ok((input, k))
+
+        Ok((input, Self {
+            description,
+            depends,
+        }))
     }
 }
 
@@ -276,10 +283,6 @@ impl<'a> KOption<'a> {
                 k.option_type = OptionType::Bool;
             } else if let Some(_) = k.def_tristate {
                 k.option_type = OptionType::Tristate;
-            } else {
-                k.option_type = OptionType::Int;
-                // TODO make this more correct logic....
-                //panic!("option_type was never found for Option '{}'", option.name);
             };
         };
         Ok((input, k))
@@ -341,7 +344,10 @@ impl std::fmt::Display for KOption<'_> {
         }
 
         writeln!(f, "    - name: {}", escape_quoted(self.name))?;
-        writeln!(f, "      type: {}", self.option_type)?;
+        match self.option_type {
+            OptionType::Uninitialized => {},
+            _ => writeln!(f, "      type: {}", self.option_type)?
+        }
 
         print_if_some!(description);
         print_if_some!(conditional);
@@ -546,12 +552,12 @@ fn take_source_kconfig(input: &str) -> IResult<&str, &str> {
 }
 
 fn take_visible(input: &str) -> IResult<&str, &str> {
-    let (input, expr) = tuple((
+    let (input, _) = tuple((
         space0,
-        tag("visible"),
+        tag("visible if"),
         space1,
     ))(input)?;
-    let (input, cond) = take_cond(input)?;
+    let (input, cond) = recognize(take_expr)(input)?;
     Ok((input, cond))
 }
 
