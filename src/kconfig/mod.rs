@@ -389,8 +389,8 @@ impl std::fmt::Display for KOption<'_> {
 
 fn count_whitespace(s: &str) -> usize {
     s.chars()
-        .take_while(|c| c == &' ' || c == &'\t')
-        .map(|c| if c == ' ' { 1 } else { 8 })
+        .take_while(|c| c == &'\t' || c == &' ')
+        .map(|c| if c == '\t' { 8 } else { 1 })
         .sum()
 }
 
