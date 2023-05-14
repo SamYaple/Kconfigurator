@@ -221,71 +221,98 @@ impl<'a> KCommentBlock<'a> {
         )))(input)?;
 
         Ok((input, Self {
-            description,
-            depends,
+                description,
+                depends,
         }))
     }
 }
 
 #[derive(Debug, Default)]
 pub struct KOption<'a> {
-    pub name:         &'a str,
-    option_type:      OptionType,
-    pub description:  Option<&'a str>,
-    pub conditional:  Option<&'a str>,
-    pub depends:      Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub implies:      Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub help:         Option<&'a str>,
-    pub prompt:       Option<&'a str>,
-    pub range:        Option<&'a str>,
+    pub name:         &'a str,         // This field must always exist
+    option_type:      OptionType,      // While this field must exist, it may be inferred from `def_bool` or `def_tristate`
+    pub description:  Option<&'a str>, // this field comes from a prompt declared after the `type`
+    pub prompt:       Option<&'a str>, // prompt exists as its own key
+    pub conditional:  Option<&'a str>, // This conditional is from the end of description and prompt
+    pub depends:      Option<Vec<(&'a str, Option<&'a str>)>>, // These are strong dependencies
+    pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>, // These select options directly, avoiding the dependency graph
+    pub implies:      Option<Vec<(&'a str, Option<&'a str>)>>, // This signifies a feature can provided to the implied option
+    pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>, // This gives a list of defaults to use, with optional condition
+    pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `bool` type, then parses a `defaults`
+    pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `tristate` type, then parses a `defaults`
+    pub help:         Option<&'a str>, // Raw help text, with leading whitespace on each line
+    pub range:        Option<&'a str>, // Only valid for `hex` and `int` types
 }
 
 impl<'a> KOption<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let mut k = Self::default();
+        let (input, name) = preceded(
+            tuple((
+                space0,
+                alt((tag("config"), tag("menuconfig"))),
+                space1,
+            )),
+            take_name,
+        )(input)?;
 
-        let (input, _) = space0(input)?;
-        let (input, _) = alt((tag("config"), tag("menuconfig")))(input)?;
-        let (input, _) = space1(input)?;
-        let (input, name) = take_name(input)?;
-        k.name = name;
+        let mut option_type = OptionType::Uninitialized;
+        let mut description = None;
+        let mut prompt = None;
+        let mut conditional = None;
+        let mut depends = None;
+        let mut selects = None;
+        let mut implies = None;
+        let mut defaults = None;
+        let mut def_bool = None;
+        let mut def_tristate = None;
+        let mut help = None;
+        let mut range = None;
+
         let (input, _) = many1(alt((
-            map(take_default,      |val| push_optvec(&mut k.defaults, val)),
-            map(take_depends,      |val| push_optvec(&mut k.depends, val)),
-            map(take_selects,      |val| push_optvec(&mut k.selects, val)),
-            map(take_imply,        |val| push_optvec(&mut k.implies, val)),
-            map(take_def_bool,     |val| push_optvec(&mut k.def_bool,val)),
-            map(take_def_tristate, |val| push_optvec(&mut k.def_tristate, val)),
-            map(take_range,        |val| k.range  = Some(val)),
-            map(take_help,         |val| k.help   = Some(val)),
-            map(take_prompt,       |val| k.prompt = Some(val)),
-            map(take_comment,      |_|   {}),
-            map(take_line_ending,  |_|   {}),
-            map(take_type,            |(opttype, desc, cond)| {
-                k.option_type = opttype;
-                k.description = desc;
-                k.conditional = cond;
+            map(take_default,      |v| push_optvec(&mut defaults,     v)),
+            map(take_depends,      |v| push_optvec(&mut depends,      v)),
+            map(take_selects,      |v| push_optvec(&mut selects,      v)),
+            map(take_imply,        |v| push_optvec(&mut implies,      v)),
+            map(take_def_bool,     |v| push_optvec(&mut def_bool,     v)),
+            map(take_def_tristate, |v| push_optvec(&mut def_tristate, v)),
+            map(take_range,        |v| range  = Some(v)),
+            map(take_help,         |v| help   = Some(v)),
+            map(take_prompt,       |v| prompt = Some(v)),
+            map(take_comment,      |_| {}),
+            map(take_line_ending,  |_| {}),
+            map(take_type,         |(opttype, desc, cond)| {
+                option_type = opttype;
+                description = desc;
+                conditional = cond;
             }),
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
 
-        //println!("SAMMES: {}", k.name);
-        //if k.name == "OF_DMA_DEFAULT_COHERENT" {
-        //    println!("SAMMIS: {}", input);
-        //}
-
-        if k.option_type == OptionType::Uninitialized {
-            if let Some(_) = k.def_bool {
-                k.option_type = OptionType::Bool;
-            } else if let Some(_) = k.def_tristate {
-                k.option_type = OptionType::Tristate;
+        if option_type == OptionType::Uninitialized {
+            if let Some(_) = def_bool {
+                option_type = OptionType::Bool;
+            } else if let Some(_) = def_tristate {
+                option_type = OptionType::Tristate;
+            } else {
+                // Currently there are ~3 dozen options that do not have a type definition
+                // They are all `int` types. We can detect and warn here without breaking
             };
         };
-        Ok((input, k))
+        Ok((input, Self{
+                name,
+                option_type,
+                description,
+                prompt,
+                conditional,
+                depends,
+                selects,
+                implies,
+                defaults,
+                def_bool,
+                def_tristate,
+                help,
+                range,
+        }))
     }
 }
 
@@ -316,17 +343,6 @@ impl std::fmt::Display for KOption<'_> {
                 }
             };
         }
-        macro_rules! print_if_some_list {
-            ($field:ident) => {
-                if let Some(values) = &self.$field {
-                    writeln!(f, "      {}:", stringify!($field))?;
-                    for val in values {
-                        let quoted = escape_quoted(&cleanup_raw_line(val));
-                        writeln!(f, "        - {}", quoted)?;
-                    }
-                }
-            };
-        }
         macro_rules! print_if_some_list_cond {
             ($field:ident) => {
                 if let Some(values) = &self.$field {
@@ -350,8 +366,8 @@ impl std::fmt::Display for KOption<'_> {
         }
 
         print_if_some!(description);
-        print_if_some!(conditional);
         print_if_some!(prompt);
+        print_if_some!(conditional);
         print_if_some!(range);
 
         print_if_some_list_cond!(depends);
@@ -495,22 +511,6 @@ fn parse_kstring(input: &str) -> IResult<&str, &str> {
             ),
         ))
     )(input)
-}
-
-fn _convert_continued_line(text: &str) -> Option<String> {
-    let mut result = String::new();
-    for line in text.split('\n') {
-        result.push_str(line.trim_start());
-        if result.ends_with('\\') {
-            result.pop();
-        }
-    }
-
-    if result.is_empty() {
-        None
-    } else {
-        Some(result)
-    }
 }
 
 fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>, Option<&str>)> {
