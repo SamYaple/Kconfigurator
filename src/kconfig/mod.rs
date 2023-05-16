@@ -2,7 +2,7 @@ mod expr;
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take, take_until, take_while1};
-use nom::character::complete::{line_ending, multispace0, multispace1, satisfy, space0, space1};
+use nom::character::complete::{anychar, line_ending, multispace0, multispace1, satisfy, space0, space1};
 use nom::combinator::{eof, map, not, peek, recognize, opt};
 use nom::multi::{many0, many1, many_till};
 use nom::sequence::{preceded, tuple, delimited};
@@ -388,10 +388,16 @@ impl std::fmt::Display for KOption<'_> {
 }
 
 fn count_whitespace(s: &str) -> usize {
-    s.chars()
-        .take_while(|c| c == &'\t' || c == &' ')
-        .map(|c| if c == '\t' { 8 } else { 1 })
-        .sum()
+    let mut count = 0;
+    for c in s.chars() {
+        if c == '\t' {
+            let spaces = 8 - (count % 8);
+            count += spaces;
+        } else {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn prefix_spaces(n: usize) -> String {
@@ -419,6 +425,45 @@ fn cleanup_raw_help(text: &str) -> String {
         }
     }
     help.trim_end().to_string()
+}
+
+fn take_help(input: &str) -> IResult<&str, &str> {
+    let (input, _) = space0(input)?;
+    let (input, _) = tag("help")(input)?;
+    let (input, _) = many1(tuple((space0, line_ending)))(input)?;
+    let (_, raw_ws) = space1(input)?;
+    let ws = count_whitespace(raw_ws);
+    recognize(many1(alt((
+        tag("\n"),
+        take_while_help(ws),
+    ))))(input)
+}
+
+fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
+    move |input: &str| -> IResult<&str, &str> {
+        // First we need to record the amount of whitespace (tab==8, space=1) on the initial line
+        let (_, raw_ws) = space1(input)?;
+        let ws = count_whitespace(raw_ws);
+
+        // Now we will take all characters from that line until and including the '\n' or EOF
+        let (input, line) = preceded(
+            space0,
+            alt((
+                take_until("\n"),          // Take until newline
+                recognize(many1(anychar)), // There is no '\n', take any char until eof
+            )),
+        )(input)?;
+        if ws < min_ws && !line.is_empty() { // if current line `ws` is less that `min_ws` the block has ended
+            Err(nom::Err::Error(
+                nom::error::Error{
+                    input: input,
+                    code: nom::error::ErrorKind::Tag,
+                }
+            ))
+        } else {
+            Ok((input, line))
+        }
+    }
 }
 
 fn cleanup_raw_line(text: &str) -> String {
@@ -640,30 +685,6 @@ fn take_continued_line(input: &str) -> IResult<&str, &str> {
     )))(input)
 }
 
-fn take_help(input: &str) -> IResult<&str, &str> {
-    let (input, _) = multispace0(input)?;
-    let (input, _) = tag("help")(input)?;
-    let (input, _) = take_line_ending(input)?;
-    recognize(many_till(
-        take(1usize),
-        peek(tuple((
-            alt((map(line_ending, |_| ()), map(eof, |_| ()))),
-            alt((
-                not(satisfy(|c| c == ' ' || c == '\t' || c == '\n' || c == '\r')),
-                map(eof, |_| ()),
-                map(tuple((
-                    multispace1,
-                    alt(( // TODO: panic! these branches are huge time eaters. Its most of the runtime
-                        map(KChoice::parse, |_| ()),
-                        map(KOption::parse, |_| ()),
-                        map(KMenu::parse,   |_| ()),
-                    )),
-                )), |_| ()),
-            )),
-        ))),
-    ))(input)
-}
-
 fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
     let (input, condition) = take_cond(input)?;
     let (input, _) = multispace1(input)?;
@@ -689,7 +710,7 @@ pub fn take_kconfig(input: &str) -> KConfig {
     match KConfig::parse(input) {
         Ok((remaining, config)) => {
             if remaining != "" {
-                panic!("SAMMAS ERROR Unprocessed input:\n{}\n", remaining);
+                panic!("SAMMAS ERROR Unprocessed input:```\n{}'\n```", remaining);
             }
             return config;
         }
