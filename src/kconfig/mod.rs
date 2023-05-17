@@ -234,14 +234,14 @@ pub struct KOption<'a> {
     pub description:  Option<&'a str>, // this field comes from a prompt declared after the `type`
     pub prompt:       Option<&'a str>, // prompt exists as its own key
     pub conditional:  Option<&'a str>, // This conditional is from the end of description and prompt
+    pub help:         Option<&'a str>, // Raw help text, with leading whitespace on each line
     pub depends:      Option<Vec<(&'a str, Option<&'a str>)>>, // These are strong dependencies
     pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>, // These select options directly, avoiding the dependency graph
     pub implies:      Option<Vec<(&'a str, Option<&'a str>)>>, // This signifies a feature can provided to the implied option
     pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>, // This gives a list of defaults to use, with optional condition
     pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `bool` type, then parses a `defaults`
     pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `tristate` type, then parses a `defaults`
-    pub help:         Option<&'a str>, // Raw help text, with leading whitespace on each line
-    pub range:        Option<&'a str>, // Only valid for `hex` and `int` types
+    pub range:        Option<Vec<&'a str>>, // Only valid for `hex` and `int` types
 }
 
 impl<'a> KOption<'a> {
@@ -256,62 +256,105 @@ impl<'a> KOption<'a> {
         )(input)?;
 
         let mut option_type = OptionType::Uninitialized;
+
         let mut description = None;
-        let mut prompt = None;
+        let mut prompt      = None;
         let mut conditional = None;
-        let mut depends = None;
-        let mut selects = None;
-        let mut implies = None;
-        let mut defaults = None;
-        let mut def_bool = None;
-        let mut def_tristate = None;
-        let mut help = None;
-        let mut range = None;
+        let mut help        = None;
+
+        let mut range        = vec![];
+        let mut depends      = vec![];
+        let mut selects      = vec![];
+        let mut implies      = vec![];
+        let mut defaults     = vec![];
+        let mut def_bool     = vec![];
+        let mut def_tristate = vec![];
+
 
         let (input, _) = many1(alt((
-            map(take_default,      |v| push_optvec(&mut defaults,     v)),
-            map(take_depends,      |v| push_optvec(&mut depends,      v)),
-            map(take_selects,      |v| push_optvec(&mut selects,      v)),
-            map(take_imply,        |v| push_optvec(&mut implies,      v)),
-            map(take_def_bool,     |v| push_optvec(&mut def_bool,     v)),
-            map(take_def_tristate, |v| push_optvec(&mut def_tristate, v)),
-            map(take_range,        |v| range  = Some(v)),
-            map(take_help,         |v| help   = Some(v)),
-            map(take_prompt,       |v| prompt = Some(v)),
+            map(take_default,      |v| defaults.push(v)),
+            map(take_depends,      |v| depends.push(v)),
+            map(take_selects,      |v| selects.push(v)),
+            map(take_imply,        |v| implies.push(v)),
+            map(take_def_bool,     |v| def_bool.push(v)),
+            map(take_def_tristate, |v| def_tristate.push(v)),
+            map(take_range,        |v| range.push(v)),
+            map(take_help,         |v| {
+                if let Some(_) = help {
+                    eprintln!("EC_help_overridden {}", name);
+                }
+                help = Some(v);
+            }),
+            map(take_prompt,       |v| {
+                if let Some(_) = prompt {
+                    eprintln!("EC_prompt_overridden {}", name);
+                }
+                prompt = Some(v);
+            }),
             map(take_comment,      |_| {}),
             map(take_line_ending,  |_| {}),
             map(take_type,         |(opttype, desc, cond)| {
+                if option_type != OptionType::Uninitialized {
+                    if option_type == opttype {
+                        eprintln!("EC_type_overridden {}", name);
+                    } else {
+                        eprintln!("EC_type_duplicate {}", name);
+                    }
+                }
                 option_type = opttype;
-                description = desc;
-                conditional = cond;
+
+                if desc.is_some() {
+                    if description.is_some() {
+                        eprintln!("EC_description_overridden {}", name);
+                    }
+                    description = desc;
+                }
+
+                if cond.is_some() {
+                    if conditional.is_some() {
+                        eprintln!("EC_conditional_overridden {}", name);
+                    }
+                    conditional = cond;
+                }
             }),
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
 
         if option_type == OptionType::Uninitialized {
-            if let Some(_) = def_bool {
+            if def_bool.len() > 0 {
                 option_type = OptionType::Bool;
-            } else if let Some(_) = def_tristate {
+            } else if def_tristate.len() > 0 {
                 option_type = OptionType::Tristate;
             } else {
                 // Currently there are ~3 dozen options that do not have a type definition
                 // They are all `int` types. We can detect and warn here without breaking
+                eprintln!("EC_missing_type {}", name);
             };
         };
+
+        if def_bool.len() > 0 && option_type != OptionType::Bool {
+            eprintln!("EC_type_mismatch {}", name);
+        }
+        if def_tristate.len() > 0 && option_type != OptionType::Tristate {
+            eprintln!("EC_type_mismatch {}", name);
+        }
+        if range.len() > 0 && (option_type != OptionType::Int && option_type != OptionType::Hex){
+            eprintln!("EC_range_in_wrong_type {}", name);
+        }
         Ok((input, Self{
                 name,
                 option_type,
                 description,
                 prompt,
                 conditional,
-                depends,
-                selects,
-                implies,
-                defaults,
-                def_bool,
-                def_tristate,
                 help,
-                range,
+                depends: if depends.len() > 0 { Some(depends) } else { None },
+                selects: if selects.len() > 0 { Some(selects) } else { None },
+                implies: if implies.len() > 0 { Some(implies) } else { None },
+                defaults: if defaults.len() > 0 { Some(defaults) } else { None },
+                def_bool: if def_bool.len() > 0 { Some(def_bool) } else { None },
+                def_tristate: if def_tristate.len() > 0 { Some(def_tristate) } else { None },
+                range: if range.len() > 0 { Some(range) } else { None },
         }))
     }
 }
@@ -343,6 +386,17 @@ impl std::fmt::Display for KOption<'_> {
                 }
             };
         }
+        macro_rules! print_if_some_list {
+            ($field:ident) => {
+                if let Some(values) = &self.$field {
+                    writeln!(f, "      {}:", stringify!($field))?;
+                    for val in values {
+                        let quoted = escape_quoted(&cleanup_raw_line(val));
+                        writeln!(f, "        - {}", quoted)?;
+                    }
+                }
+            };
+        }
         macro_rules! print_if_some_list_cond {
             ($field:ident) => {
                 if let Some(values) = &self.$field {
@@ -368,7 +422,6 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some!(description);
         print_if_some!(prompt);
         print_if_some!(conditional);
-        print_if_some!(range);
 
         print_if_some_list_cond!(depends);
         print_if_some_list_cond!(defaults);
@@ -376,6 +429,8 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some_list_cond!(implies);
         print_if_some_list_cond!(def_bool);
         print_if_some_list_cond!(def_tristate);
+
+        print_if_some_list!(range);
 
         if let Some(text) = &self.help {
             writeln!(f, "      help: |")?;
