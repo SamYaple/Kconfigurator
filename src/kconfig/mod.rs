@@ -36,13 +36,12 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Copy, Clone, Default)]
 enum OptionType {
-    #[default]
-    Uninitialized, // TODO: This exists to be a default. Re-evaluate that reasoning.
     Bool,
     Tristate,
     Str,
+    #[default]
     Int,
     Hex,
 }
@@ -50,7 +49,6 @@ enum OptionType {
 impl std::fmt::Display for OptionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OptionType::Uninitialized => write!(f, "\"Uninitialized\""),
             OptionType::Tristate      => write!(f, "\"tristate\""),
             OptionType::Bool          => write!(f, "\"bool\""),
             OptionType::Str           => write!(f, "\"str\""),
@@ -283,7 +281,7 @@ impl<'a> KOption<'a> {
             take_name,
         )(input)?;
 
-        let mut option_type = OptionType::Uninitialized;
+        let mut opt_option_type = None;
 
         let mut description = None;
         let mut prompt      = None;
@@ -322,7 +320,7 @@ impl<'a> KOption<'a> {
             map(take_comment,      |_| {}),
             map(take_line_ending,  |_| {}),
             map(take_type,         |(opttype, desc, cond)| {
-                if option_type != OptionType::Uninitialized {
+                if let Some(option_type) = opt_option_type {
                     if option_type == opttype {
                         // This branch indicates the option has the same type declared twice
                         eprintln!("EC_type_duplicate {}", name);
@@ -331,7 +329,7 @@ impl<'a> KOption<'a> {
                         eprintln!("EC_type_overridden {}", name);
                     }
                 }
-                option_type = opttype;
+                opt_option_type = Some(opttype);
 
                 if desc.is_some() {
                     if description.is_some() {
@@ -350,16 +348,20 @@ impl<'a> KOption<'a> {
             map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
         )))(input)?;
 
-        if option_type == OptionType::Uninitialized {
-            if def_bool.len() > 0 {
-                option_type = OptionType::Bool;
-            } else if def_tristate.len() > 0 {
-                option_type = OptionType::Tristate;
-            } else {
-                // Currently there are ~3 dozen options that do not have a type definition
-                // They are all `int` types. We can detect and warn here without breaking
-                eprintln!("EC_missing_type {}", name);
-            };
+        let option_type = match opt_option_type {
+            Some(option_type) => option_type,
+            None => {
+                if def_bool.len() > 0 {
+                    OptionType::Bool
+                } else if def_tristate.len() > 0 {
+                    OptionType::Tristate
+                } else {
+                    // Currently there are ~3 dozen options that do not have a type definition
+                    // They are all `int` types. We can detect and warn here without breaking
+                    eprintln!("EC_missing_type {}", name);
+                    OptionType::Int
+                }
+            }
         };
 
         if def_bool.len() > 0 && option_type != OptionType::Bool {
@@ -371,7 +373,7 @@ impl<'a> KOption<'a> {
         if range.len() > 0 && (option_type != OptionType::Int && option_type != OptionType::Hex){
             eprintln!("EC_range_in_wrong_type {}", name);
         }
-        println!("SAMMAS {}", name);
+        //println!("SAMMAS {}", name);
         Ok((input, Self{
                 name,
                 option_type,
@@ -445,10 +447,7 @@ impl std::fmt::Display for KOption<'_> {
         }
 
         writeln!(f, "    - name: {}", escape_quoted(self.name))?;
-        match self.option_type {
-            OptionType::Uninitialized => {},
-            _ => writeln!(f, "      type: {}", self.option_type)?
-        }
+        writeln!(f, "      type: {}", self.option_type)?;
 
         print_if_some!(description);
         print_if_some!(prompt);
