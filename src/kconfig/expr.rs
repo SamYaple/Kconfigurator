@@ -1,8 +1,9 @@
-use crate::kconfig::{
+use super::util::{
+    take_signed_int,
+    take_hex,
+    special_space,
     parse_kstring,
     take_name,
-    is_digit,
-    is_hex,
 };
 
 use nom::{
@@ -11,7 +12,6 @@ use nom::{
         tag,
         take_while1,
     },
-    character::complete::space1,
     combinator::{
         opt,
         map,
@@ -34,13 +34,6 @@ pub enum Expr<'a> {
     Or(Box<Expr<'a>>, Box<Expr<'a>>),
 }
 
-pub fn special_space(input: &str) -> IResult<&str, &str> {
-    recognize(many0(alt((
-        space1,
-        tag("\\\n"),
-    ))))(input)
-}
-
 fn take_parens(input: &str) -> IResult<&str, &str> {
     let (input, ret) = recognize(delimited(
         alt((tag("$("), tag("("))),
@@ -59,20 +52,6 @@ fn take_parens(input: &str) -> IResult<&str, &str> {
         tag(")"),
     ))(input)?;
     Ok((input, ret))
-}
-
-pub fn take_signed_int(input: &str) -> IResult<&str, &str> {
-    recognize(tuple((
-        opt(tag("-")),
-        take_while1(|c| is_digit(c as u8)),
-    )))(input)
-}
-
-pub fn take_hex(input: &str) -> IResult<&str, &str> {
-    recognize(tuple((
-        tag("0x"),
-        take_while1(|c| is_hex(c as u8)),
-    )))(input)
 }
 
 fn take_operation(input: &str) -> IResult<&str, &str> {
