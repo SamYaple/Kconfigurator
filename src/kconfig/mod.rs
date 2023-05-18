@@ -381,13 +381,13 @@ impl<'a> KOption<'a> {
                 prompt,
                 conditional,
                 help,
-                depends: if depends.len() > 0 { Some(depends) } else { None },
-                selects: if selects.len() > 0 { Some(selects) } else { None },
-                implies: if implies.len() > 0 { Some(implies) } else { None },
-                defaults: if defaults.len() > 0 { Some(defaults) } else { None },
-                def_bool: if def_bool.len() > 0 { Some(def_bool) } else { None },
-                def_tristate: if def_tristate.len() > 0 { Some(def_tristate) } else { None },
-                range: if range.len() > 0 { Some(range) } else { None },
+                range:    if range.is_empty()    { None } else { Some(range)   },
+                depends:  if depends.is_empty()  { None } else { Some(depends) },
+                selects:  if selects.is_empty()  { None } else { Some(selects) },
+                implies:  if implies.is_empty()  { None } else { Some(implies) },
+                defaults: if defaults.is_empty() { None } else { Some(defaults)},
+                def_bool: if def_bool.is_empty() { None } else { Some(def_bool)},
+                def_tristate: if def_tristate.is_empty() { None } else { Some(def_tristate) },
         }))
     }
 }
