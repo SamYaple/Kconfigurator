@@ -1,16 +1,29 @@
-use crate::kconfig::parse_kstring;
-use crate::kconfig::take_name;
-use crate::kconfig::is_digit;
-use crate::kconfig::is_hex;
+use crate::kconfig::{
+    parse_kstring,
+    take_name,
+    is_digit,
+    is_hex,
+};
 
 use nom::{
     IResult,
-    bytes::complete::{tag, take_while1, take_until},
+    bytes::complete::{
+        tag,
+        take_while1,
+    },
     character::complete::space1,
-    combinator::{opt, map, recognize},
-    sequence::{delimited, preceded, tuple},
+    combinator::{
+        opt,
+        map,
+        recognize,
+    },
+    sequence::{
+        delimited,
+        preceded,
+        tuple,
+    },
     branch::alt,
-    multi::{many0, many1},
+    multi::many0,
 };
 
 #[derive(Debug, PartialEq)]
@@ -48,14 +61,14 @@ fn take_parens(input: &str) -> IResult<&str, &str> {
     Ok((input, ret))
 }
 
-fn take_signed_int(input: &str) -> IResult<&str, &str> {
+pub fn take_signed_int(input: &str) -> IResult<&str, &str> {
     recognize(tuple((
         opt(tag("-")),
         take_while1(|c| is_digit(c as u8)),
     )))(input)
 }
 
-fn take_hex(input: &str) -> IResult<&str, &str> {
+pub fn take_hex(input: &str) -> IResult<&str, &str> {
     recognize(tuple((
         tag("0x"),
         take_while1(|c| is_hex(c as u8)),

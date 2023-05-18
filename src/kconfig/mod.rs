@@ -1,12 +1,40 @@
 mod expr;
 
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take, take_until, take_while1};
-use nom::character::complete::{anychar, line_ending, multispace0, multispace1, satisfy, space0, space1};
-use nom::combinator::{eof, map, not, peek, recognize, opt};
-use nom::multi::{many0, many1, many_till};
-use nom::sequence::{preceded, tuple, delimited};
-use nom::IResult;
+use nom::{
+    branch::alt,
+    bytes::complete::{
+        tag,
+        take,
+        take_until,
+        take_while1,
+    },
+    character::complete::{
+        anychar,
+        line_ending,
+        multispace1,
+        satisfy,
+        space0,
+        space1,
+    },
+    combinator::{
+        map,
+        not,
+        peek,
+        recognize,
+        opt,
+    },
+    multi::{
+        many0,
+        many1,
+        many_till,
+    },
+    sequence::{
+        preceded,
+        tuple,
+        delimited,
+    },
+    IResult,
+};
 
 #[derive(Debug, PartialEq, Default)]
 enum OptionType {
@@ -241,7 +269,7 @@ pub struct KOption<'a> {
     pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>, // This gives a list of defaults to use, with optional condition
     pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `bool` type, then parses a `defaults`
     pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `tristate` type, then parses a `defaults`
-    pub range:        Option<Vec<&'a str>>, // Only valid for `hex` and `int` types
+    pub range:        Option<Vec<((&'a str, &'a str), Option<&'a str>)>>, // Only valid for `hex` and `int` types
 }
 
 impl<'a> KOption<'a> {
@@ -296,9 +324,11 @@ impl<'a> KOption<'a> {
             map(take_type,         |(opttype, desc, cond)| {
                 if option_type != OptionType::Uninitialized {
                     if option_type == opttype {
-                        eprintln!("EC_type_overridden {}", name);
-                    } else {
+                        // This branch indicates the option has the same type declared twice
                         eprintln!("EC_type_duplicate {}", name);
+                    } else {
+                        // This means the type of this option CHANGED, not good at all.
+                        eprintln!("EC_type_overridden {}", name);
                     }
                 }
                 option_type = opttype;
@@ -341,6 +371,7 @@ impl<'a> KOption<'a> {
         if range.len() > 0 && (option_type != OptionType::Int && option_type != OptionType::Hex){
             eprintln!("EC_range_in_wrong_type {}", name);
         }
+        println!("SAMMAS {}", name);
         Ok((input, Self{
                 name,
                 option_type,
@@ -406,7 +437,7 @@ impl std::fmt::Display for KOption<'_> {
                         writeln!(f, "        - expression: {}", esc_expr)?;
                         if let Some(c) = cond {
                             let esc_c = escape_quoted(&cleanup_raw_line(c));
-                            writeln!(f, "          condition: {}", esc_c)?;
+                            writeln!(f, "          condition:  {}", esc_c)?;
                         }
                     }
                 }
@@ -430,7 +461,17 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some_list_cond!(def_bool);
         print_if_some_list_cond!(def_tristate);
 
-        print_if_some_list!(range);
+        if let Some(values) = &self.range {
+            for ((begin, end), cond) in values {
+                writeln!(f, "      range:")?;
+                writeln!(f, "        - begin: {begin}")?;
+                writeln!(f, "          end:   {end}")?;
+                if let Some(c) = cond {
+                    let esc_c = escape_quoted(&cleanup_raw_line(c));
+                    writeln!(f, "          condition: {}", esc_c)?;
+                }
+            }
+        }
 
         if let Some(text) = &self.help {
             writeln!(f, "      help: |")?;
@@ -681,8 +722,19 @@ fn take_depends(input: &str) -> IResult<&str, (&str, Option<&str>)> {
     take_named_line(input, "depends on")
 }
 
-fn take_range(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "range")
+fn take_range(input: &str) -> IResult<&str, ((&str, &str), Option<&str>)> {
+    let (input, _) = tuple((
+        space0,
+        tag("range"),
+        space1,
+    ))(input)?;
+    let (input, (start, _, end)) = alt((
+        tuple((expr::take_signed_int, space1, expr::take_signed_int)),
+        tuple((expr::take_hex, space1,  expr::take_hex)),
+        tuple((take_name, space1, take_name)),
+    ))(input)?;
+    let (input, cond) = opt(take_cond)(input)?;
+    Ok((input, ((start, end), cond)))
 }
 
 fn take_prompt(input: &str) -> IResult<&str, &str> {
