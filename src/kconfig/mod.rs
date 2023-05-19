@@ -132,44 +132,77 @@ impl<'a> KConfig<'a> {
 
 #[derive(Debug, Default)]
 pub struct KChoice<'a> {
-    options:     Vec<KOption<'a>>,
     prompt:      &'a str,
-    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
-    defaults:    Option<Vec<(&'a str, Option<&'a str>)>>,
-    help:        Option<&'a str>,
+    options:     Vec<KOption<'a>>,
     optional:    bool,
-    option_type: OptionType,
-    description: Option<&'a str>,
     conditional: Option<&'a str>,
+    defaults:    Option<Vec<(&'a str, Option<&'a str>)>>,
+    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
+    description: Option<&'a str>,
+    help:        Option<&'a str>,
 }
 
 impl<'a> KChoice<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let mut k = Self::default();
+        let mut opt_prompt  = None;
+        let mut description = None;
+        let mut conditional = None;
+        let mut help = None;
+        let mut optional = false;
+        let mut depends  = vec![];
+        let mut defaults = vec![];
+        let mut options  = vec![];
 
-        let (input, _) = space0(input)?;
-        let (input, _) = tag("choice")(input)?;
-        let (input, _) = space0(input)?;
-        let (input, _) = many1(line_ending)(input)?;
-        let (input, _) = many1(alt((
-            map(KOption::parse,       |val| k.options.push(val)),
-            map(take_depends,         |val| push_optvec(&mut k.depends,  val)),
-            map(take_default,         |val| push_optvec(&mut k.defaults, val)),
-            map(take_optional,        |_|   k.optional = false),
-            map(take_prompt,          |val| k.prompt = val),
-            map(take_help,            |val| k.help = Some(val)),
-            map(KCommentBlock::parse, |_|   {}), // TODO: something useful with these?
-            map(take_comment,         |_|   {}),
-            map(take_line_ending,     |_|   {}),
-            map(take_type,            |(opttype, desc, cond)| {
-                k.option_type = opttype;
-                k.description = desc;
-                k.conditional = cond;
-            }),
-        )))(input)?;
-        let (input, _) = space0(input)?;
-        let (input, _) = tag("endchoice")(input)?;
-        Ok((input, k))
+        let (input, _) = delimited(
+            tuple((
+                space0,
+                tag("choice"),
+                space0,
+            )),
+            tuple((
+                take_continued_line,
+                many1(alt((
+                    map(take_depends,         |v| depends.push(v)),
+                    map(take_default,         |v| defaults.push(v)),
+                    map(take_optional,        |_| optional = true),
+                    map(take_prompt,          |v| opt_prompt = Some(v)),
+                    map(take_help,            |v| help = Some(v)),
+                    map(KOption::parse,       |v| options.push(v)),
+                    map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
+                    map(take_comment,         |_| {}),
+                    map(take_line_ending,     |_| {}),
+                    map(take_type,            |(opttype, desc, cond)| {
+                        description = desc;
+                        conditional = cond;
+                    }),
+                ))),
+            )),
+            tuple((
+                space0,
+                tag("endchoice"),
+                space0,
+            )),
+        )(input)?;
+
+        let prompt = match opt_prompt {
+            Some(p) => p,
+            None => {
+                if description.is_none() {
+                    eprintln!("EC_kchoice_no_prompt");
+                }
+                "PARSING SUCCESSFUL;MISSING PROMPT"
+            }
+        };
+        Ok((input, Self{
+                prompt,
+                description,
+                optional,
+                conditional,
+                defaults: if defaults.is_empty() { None } else { Some(defaults) },
+                depends:  if depends.is_empty()  { None } else { Some(depends) },
+                help,
+                options,
+        }))
     }
 }
 
