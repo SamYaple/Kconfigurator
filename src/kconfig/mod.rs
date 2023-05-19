@@ -2,35 +2,35 @@ mod expr;
 mod util;
 
 use util::{
-    take_help,
-    take_block,
-    take_mainmenu,
-    take_comment,
-    take_line_ending,
-    take_source_kconfig,
+    cleanup_raw_help,
+    cleanup_raw_line,
+    parse_kstring,
     push_optvec,
-    take_default,
-    take_depends,
-    take_optional,
-    take_prompt,
-    take_type,
+    take_block,
+    take_comment,
     take_continued_line,
-    take_visible,
-    take_name,
-    take_selects,
     take_def_bool,
     take_def_tristate,
+    take_default,
+    take_depends,
+    take_help,
     take_imply,
+    take_line_ending,
+    take_mainmenu,
+    take_name,
+    take_optional,
+    take_prompt,
     take_range,
-    cleanup_raw_line,
-    cleanup_raw_help,
+    take_selects,
+    take_source_kconfig,
+    take_type,
+    take_visible,
 };
 
 use nom::{
     branch::alt,
     bytes::complete::{
         tag,
-        take_until,
     },
     character::complete::{
         line_ending,
@@ -45,6 +45,7 @@ use nom::{
         many1,
     },
     sequence::{
+        delimited,
         preceded,
         tuple,
     },
@@ -174,37 +175,64 @@ impl<'a> KChoice<'a> {
 
 #[derive(Debug, Default)]
 pub struct KMenu<'a> {
-    options:     Option<Vec<KOption<'a>>>,
-    menus:       Option<Vec<KMenu<'a>>>,
-    choices:     Option<Vec<KChoice<'a>>>,
-    configs:     Option<Vec<&'a str>>,
-    blocks:      Option<Vec<(&'a str, KConfig<'a>)>>,
     description: &'a str,
-    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
-    visible:     Option<Vec<&'a str>>,
+    blocks:  Option<Vec<(&'a str, KConfig<'a>)>>,
+    choices: Option<Vec<KChoice<'a>>>,
+    configs: Option<Vec<&'a str>>,
+    depends: Option<Vec<(&'a str, Option<&'a str>)>>,
+    menus:   Option<Vec<KMenu<'a>>>,
+    options: Option<Vec<KOption<'a>>>,
+    visible: Option<Vec<&'a str>>,
 }
 
 impl<'a> KMenu<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let mut k = Self::default();
+        let mut blocks  = vec![];
+        let mut choices = vec![];
+        let mut configs = vec![];
+        let mut depends = vec![];
+        let mut menus   = vec![];
+        let mut options = vec![];
+        let mut visible = vec![];
 
-        let (input, _) = tag("menu")(input)?;
-        let (input, description) = take_continued_line(input)?;
-        k.description = description;
-        let (input, _) = many1(alt((
-            map(take_block,           |val| push_optvec(&mut k.blocks,  val)),
-            map(KChoice::parse,       |val| push_optvec(&mut k.choices, val)),
-            map(KMenu::parse,         |val| push_optvec(&mut k.menus,   val)),
-            map(KOption::parse,       |val| push_optvec(&mut k.options, val)),
-            map(take_visible,         |val| push_optvec(&mut k.visible, val)),
-            map(take_depends,         |val| push_optvec(&mut k.depends, val)),
-            map(take_source_kconfig,  |val| push_optvec(&mut k.configs, val)),
-            map(KCommentBlock::parse, |_|   {}), // TODO: something useful with these?
-            map(take_comment,         |_|   {}),
-            map(take_line_ending,     |_|   {}),
-        )))(input)?;
-        let (input, _) = tag("endmenu")(input)?;
-        Ok((input, k))
+        let (input, (description, _)) = delimited(
+            tuple((
+                space0,
+                tag("menu"),
+                space0,
+            )),
+            tuple((
+                take_continued_line,
+                many1(alt((
+                    map(take_block,           |v| blocks.push(v)),
+                    map(KChoice::parse,       |v| choices.push(v)),
+                    map(KMenu::parse,         |v| menus.push(v)),
+                    map(KOption::parse,       |v| options.push(v)),
+                    map(take_visible,         |v| visible.push(v)),
+                    map(take_depends,         |v| depends.push(v)),
+                    map(take_source_kconfig,  |v| configs.push(v)),
+                    map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
+                    map(take_comment,         |_| {}),
+                    map(take_line_ending,     |_| {}),
+                ))),
+            )),
+            tuple((
+                space0,
+                tag("endmenu"),
+                space0,
+            )),
+        )(input)?;
+
+        Ok((input, Self{
+                description,
+                blocks:  if blocks.is_empty()   { None } else { Some(blocks) },
+                choices: if choices.is_empty()  { None } else { Some(choices) },
+                configs: if configs.is_empty()  { None } else { Some(configs) },
+                depends: if depends.is_empty()  { None } else { Some(depends) },
+                menus:   if menus.is_empty()    { None } else { Some(menus) },
+                options: if options.is_empty()  { None } else { Some(options) },
+                visible: if visible.is_empty()  { None } else { Some(visible) },
+        }))
     }
 
     pub fn collect_options(&self) -> Vec<&KOption<'a>> {
@@ -239,7 +267,7 @@ impl<'a> KMenu<'a> {
 #[derive(Debug, Default)]
 pub struct KCommentBlock<'a> {
     description: &'a str,
-    depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
+    depends: Option<Vec<(&'a str, Option<&'a str>)>>,
 }
 
 impl<'a> KCommentBlock<'a> {
@@ -250,20 +278,19 @@ impl<'a> KCommentBlock<'a> {
                 tag("comment"),
                 space1,
             )),
-            take_until("\n")  // NOTE: AFAIK these comment blocks cannot be multiline
+            parse_kstring,
         )(input)?;
 
-        // TODO: This pattern is better than before, but still has a smell
-        let mut depends: Option<Vec<(&str, Option<&str>)>> = None;
+        let mut depends = vec![];
         let (input, _) = many0(alt((
-            map(take_depends,     |v| push_optvec(&mut depends, v)),
+            map(take_depends,     |v| depends.push(v)),
             map(take_comment,     |_| {}),
             map(take_line_ending, |_| {}),
         )))(input)?;
 
         Ok((input, Self {
                 description,
-                depends,
+                depends: if depends.is_empty() { None } else { Some(depends) },
         }))
     }
 }
@@ -271,7 +298,7 @@ impl<'a> KCommentBlock<'a> {
 #[derive(Debug, Default)]
 pub struct KOption<'a> {
     pub name:         &'a str,         // This field must always exist
-    option_type:      OptionType,      // While this field must exist, it may be inferred from `def_bool` or `def_tristate`
+    pub option_type:  OptionType,      // This may be inferred from `def_bool` or `def_tristate`
     pub description:  Option<&'a str>, // this field comes from a prompt declared after the `type`
     pub prompt:       Option<&'a str>, // prompt exists as its own key
     pub conditional:  Option<&'a str>, // This conditional is from the end of description and prompt
@@ -408,7 +435,7 @@ impl<'a> KOption<'a> {
 }
 
 fn escape_quoted(input: &str) -> String {
-    let mut result = String::with_capacity(input.len() + 2);
+    let mut result = String::new();
     result.push('"');
 
     for c in input.chars() {

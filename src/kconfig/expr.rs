@@ -1,11 +1,3 @@
-use super::util::{
-    take_signed_int,
-    take_hex,
-    special_space,
-    parse_kstring,
-    take_name,
-};
-
 use nom::{
     IResult,
     bytes::complete::{
@@ -24,6 +16,14 @@ use nom::{
     },
     branch::alt,
     multi::many0,
+};
+
+use super::util::{
+    parse_kstring,
+    special_space,
+    take_hex,
+    take_name,
+    take_signed_int,
 };
 
 #[derive(Debug, PartialEq)]
