@@ -95,10 +95,10 @@ impl<'a> KConfig<'a> {
 
         let (input, _) = many0(alt((
             map(take_line_ending,     |_| {}),
+            map(take_comment,         |_| {}),
             map(take_block,           |v| blocks.push(v)),
             map(take_source_kconfig,  |v| configs.push(v)),
             map(take_mainmenu,        |v| mainmenu = Some(v)),
-            map(take_comment,         |_| {}),
             map(KOption::parse,       |v| options.push(v)),
             map(KMenu::parse,         |v| menus.push(v)),
             map(KChoice::parse,       |v| choices.push(v)),
@@ -319,22 +319,23 @@ pub struct KCommentBlock<'a> {
 
 impl<'a> KCommentBlock<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, description) = preceded(
+        let mut depends = vec![];
+
+        let (input, (description, _)) = preceded(
             tuple((
                 space0,
                 tag("comment"),
                 space1,
             )),
-            parse_kstring,
+            tuple((
+                parse_kstring,
+                many0(alt((
+                    map(take_line_ending, |_| {}),
+                    map(take_comment,     |_| {}),
+                    map(take_depends,     |v| depends.push(v)),
+                ))),
+            )),
         )(input)?;
-
-        let mut depends = vec![];
-        let (input, _) = many0(alt((
-            map(take_depends,     |v| depends.push(v)),
-            map(take_comment,     |_| {}),
-            map(take_line_ending, |_| {}),
-        )))(input)?;
-
         Ok((input, Self {
                 description,
                 depends: if depends.is_empty() { None } else { Some(depends) },
@@ -361,15 +362,6 @@ pub struct KOption<'a> {
 
 impl<'a> KOption<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, name) = preceded(
-            tuple((
-                space0,
-                alt((tag("config"), tag("menuconfig"))),
-                space1,
-            )),
-            take_name,
-        )(input)?;
-
         let mut opt_option_type = None;
 
         let mut description = None;
@@ -385,57 +377,66 @@ impl<'a> KOption<'a> {
         let mut def_bool     = vec![];
         let mut def_tristate = vec![];
 
+        let (input, (name, _)) = preceded(
+            tuple((
+                space0,
+                alt((tag("config"), tag("menuconfig"))),
+                space1,
+            )),
+            tuple((
+                take_name,
+                many1(alt((
+                    map(take_comment,      |_| {}),
+                    map(take_line_ending,  |_| {}),
+                    map(take_default,      |v| defaults.push(v)),
+                    map(take_depends,      |v| depends.push(v)),
+                    map(take_selects,      |v| selects.push(v)),
+                    map(take_imply,        |v| implies.push(v)),
+                    map(take_def_bool,     |v| def_bool.push(v)),
+                    map(take_def_tristate, |v| def_tristate.push(v)),
+                    map(take_range,        |v| range.push(v)),
+                    map(take_help,         |v| {
+                        if let Some(_) = help {
+                            eprintln!("EC_help_overridden");
+                        }
+                        help = Some(v);
+                    }),
+                    map(take_prompt,       |v| {
+                        if let Some(_) = prompt {
+                            eprintln!("EC_prompt_overridden");
+                        }
+                        prompt = Some(v);
+                    }),
+                    map(take_type,         |(opttype, desc, cond)| {
+                        if let Some(option_type) = opt_option_type {
+                            if option_type == opttype {
+                                // This branch indicates the option has the same type declared twice
+                                eprintln!("EC_type_duplicate");
+                            } else {
+                                // This means the type of this option CHANGED, not good at all.
+                                eprintln!("EC_type_overridden");
+                            }
+                        }
+                        opt_option_type = Some(opttype);
 
-        let (input, _) = many1(alt((
-            map(take_comment,      |_| {}),
-            map(take_line_ending,  |_| {}),
-            map(take_default,      |v| defaults.push(v)),
-            map(take_depends,      |v| depends.push(v)),
-            map(take_selects,      |v| selects.push(v)),
-            map(take_imply,        |v| implies.push(v)),
-            map(take_def_bool,     |v| def_bool.push(v)),
-            map(take_def_tristate, |v| def_tristate.push(v)),
-            map(take_range,        |v| range.push(v)),
-            map(take_help,         |v| {
-                if let Some(_) = help {
-                    eprintln!("EC_help_overridden {}", name);
-                }
-                help = Some(v);
-            }),
-            map(take_prompt,       |v| {
-                if let Some(_) = prompt {
-                    eprintln!("EC_prompt_overridden {}", name);
-                }
-                prompt = Some(v);
-            }),
-            map(take_type,         |(opttype, desc, cond)| {
-                if let Some(option_type) = opt_option_type {
-                    if option_type == opttype {
-                        // This branch indicates the option has the same type declared twice
-                        eprintln!("EC_type_duplicate {}", name);
-                    } else {
-                        // This means the type of this option CHANGED, not good at all.
-                        eprintln!("EC_type_overridden {}", name);
-                    }
-                }
-                opt_option_type = Some(opttype);
+                        if desc.is_some() {
+                            if description.is_some() {
+                                eprintln!("EC_description_overridden");
+                            }
+                            description = desc;
+                        }
 
-                if desc.is_some() {
-                    if description.is_some() {
-                        eprintln!("EC_description_overridden {}", name);
-                    }
-                    description = desc;
-                }
-
-                if cond.is_some() {
-                    if conditional.is_some() {
-                        eprintln!("EC_conditional_overridden {}", name);
-                    }
-                    conditional = cond;
-                }
-            }),
-            map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
-        )))(input)?;
+                        if cond.is_some() {
+                            if conditional.is_some() {
+                                eprintln!("EC_conditional_overridden");
+                            }
+                            conditional = cond;
+                        }
+                    }),
+                    map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
+                ))),
+            )),
+        )(input)?;
 
         let option_type = match opt_option_type {
             Some(option_type) => option_type,
@@ -447,20 +448,20 @@ impl<'a> KOption<'a> {
                 } else {
                     // Currently there are ~3 dozen options that do not have a type definition
                     // They are all `int` types. We can detect and warn here without breaking
-                    eprintln!("EC_missing_type {}", name);
+                    eprintln!("EC_missing_type");
                     OptionType::Int
                 }
             }
         };
 
         if def_bool.len() > 0 && option_type != OptionType::Bool {
-            eprintln!("EC_type_mismatch {}", name);
+            eprintln!("EC_type_mismatch");
         }
         if def_tristate.len() > 0 && option_type != OptionType::Tristate {
-            eprintln!("EC_type_mismatch {}", name);
+            eprintln!("EC_type_mismatch");
         }
         if range.len() > 0 && (option_type != OptionType::Int && option_type != OptionType::Hex){
-            eprintln!("EC_range_in_wrong_type {}", name);
+            eprintln!("EC_range_in_wrong_type");
         }
         //println!("SAMMAS {}", name);
         Ok((input, Self{
