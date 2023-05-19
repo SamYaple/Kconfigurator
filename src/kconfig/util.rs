@@ -43,15 +43,6 @@ use super::{
     }
 };
 
-pub fn push_optvec<T>(opt_vec: &mut Option<Vec<T>>, val: T) {
-    // this pattern seems wrong to break into a function... maybe its fine
-    if let Some(ref mut vec) = opt_vec {
-        vec.push(val);
-    } else {
-        *opt_vec = Some(vec![val]);
-    }
-}
-
 pub fn count_whitespace(s: &str) -> usize {
     let mut count = 0;
     for c in s.chars() {

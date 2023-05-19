@@ -5,7 +5,6 @@ use util::{
     cleanup_raw_help,
     cleanup_raw_line,
     parse_kstring,
-    push_optvec,
     take_block,
     take_comment,
     take_continued_line,
