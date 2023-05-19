@@ -76,29 +76,42 @@ impl std::fmt::Display for OptionType {
 
 #[derive(Debug, Default)]
 pub struct KConfig<'a> {
-    options:  Option<Vec<KOption<'a>>>,
+    mainmenu: Option<&'a str>,
+    blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
     choices:  Option<Vec<KChoice<'a>>>,
     configs:  Option<Vec<&'a str>>,
-    blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
     menus:    Option<Vec<KMenu<'a>>>,
-    mainmenu: Option<&'a str>,
+    options:  Option<Vec<KOption<'a>>>,
 }
 
 impl<'a> KConfig<'a> {
     fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let mut k = Self::default();
+        let mut mainmenu = None;
+        let mut blocks  = vec![];
+        let mut choices = vec![];
+        let mut configs = vec![];
+        let mut menus   = vec![];
+        let mut options = vec![];
+
         let (input, _) = many0(alt((
-            map(take_block,           |val| push_optvec(&mut k.blocks,  val)),
-            map(KChoice::parse,       |val| push_optvec(&mut k.choices, val)),
-            map(KMenu::parse,         |val| push_optvec(&mut k.menus,   val)),
-            map(KOption::parse,       |val| push_optvec(&mut k.options, val)),
-            map(take_source_kconfig,  |val| push_optvec(&mut k.configs, val)),
-            map(take_mainmenu,        |val| k.mainmenu = Some(val)),
-            map(KCommentBlock::parse, |_|   {}), // TODO: something useful with these?
-            map(take_comment,         |_|   {}),
-            map(take_line_ending,     |_|   {}),
+            map(take_line_ending,     |_| {}),
+            map(take_block,           |v| blocks.push(v)),
+            map(take_source_kconfig,  |v| configs.push(v)),
+            map(take_mainmenu,        |v| mainmenu = Some(v)),
+            map(take_comment,         |_| {}),
+            map(KOption::parse,       |v| options.push(v)),
+            map(KMenu::parse,         |v| menus.push(v)),
+            map(KChoice::parse,       |v| choices.push(v)),
+            map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
         )))(input)?;
-        Ok((input, k))
+        Ok((input, Self{
+                mainmenu,
+                blocks:  if blocks.is_empty()   { None } else { Some(blocks) },
+                choices: if choices.is_empty()  { None } else { Some(choices) },
+                configs: if configs.is_empty()  { None } else { Some(configs) },
+                menus:   if menus.is_empty()    { None } else { Some(menus) },
+                options: if options.is_empty()  { None } else { Some(options) },
+        }))
     }
 
     pub fn collect_options(&self) -> Vec<&KOption<'a>> {
@@ -132,6 +145,7 @@ impl<'a> KConfig<'a> {
 
 #[derive(Debug, Default)]
 pub struct KChoice<'a> {
+    // option_type _is_ needed here :/
     prompt:      &'a str,
     options:     Vec<KOption<'a>>,
     optional:    bool,
@@ -162,6 +176,8 @@ impl<'a> KChoice<'a> {
             tuple((
                 take_continued_line,
                 many1(alt((
+                    map(take_line_ending,     |_| {}),
+                    map(take_comment,         |_| {}),
                     map(take_depends,         |v| depends.push(v)),
                     map(take_default,         |v| defaults.push(v)),
                     map(take_optional,        |_| optional = true),
@@ -169,9 +185,7 @@ impl<'a> KChoice<'a> {
                     map(take_help,            |v| help = Some(v)),
                     map(KOption::parse,       |v| options.push(v)),
                     map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
-                    map(take_comment,         |_| {}),
-                    map(take_line_ending,     |_| {}),
-                    map(take_type,            |(opttype, desc, cond)| {
+                    map(take_type,            |(_opttype, desc, cond)| {
                         description = desc;
                         conditional = cond;
                     }),
@@ -237,6 +251,8 @@ impl<'a> KMenu<'a> {
             tuple((
                 take_continued_line,
                 many1(alt((
+                    map(take_line_ending,     |_| {}),
+                    map(take_comment,         |_| {}),
                     map(take_block,           |v| blocks.push(v)),
                     map(KChoice::parse,       |v| choices.push(v)),
                     map(KMenu::parse,         |v| menus.push(v)),
@@ -245,8 +261,6 @@ impl<'a> KMenu<'a> {
                     map(take_depends,         |v| depends.push(v)),
                     map(take_source_kconfig,  |v| configs.push(v)),
                     map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
-                    map(take_comment,         |_| {}),
-                    map(take_line_ending,     |_| {}),
                 ))),
             )),
             tuple((
@@ -373,6 +387,8 @@ impl<'a> KOption<'a> {
 
 
         let (input, _) = many1(alt((
+            map(take_comment,      |_| {}),
+            map(take_line_ending,  |_| {}),
             map(take_default,      |v| defaults.push(v)),
             map(take_depends,      |v| depends.push(v)),
             map(take_selects,      |v| selects.push(v)),
@@ -392,8 +408,6 @@ impl<'a> KOption<'a> {
                 }
                 prompt = Some(v);
             }),
-            map(take_comment,      |_| {}),
-            map(take_line_ending,  |_| {}),
             map(take_type,         |(opttype, desc, cond)| {
                 if let Some(option_type) = opt_option_type {
                     if option_type == opttype {
