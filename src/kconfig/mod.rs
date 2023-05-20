@@ -51,12 +51,11 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug, PartialEq, Copy, Clone, Default)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum OptionType {
     Bool,
     Tristate,
     Str,
-    #[default]
     Int,
     Hex,
 }
@@ -73,7 +72,7 @@ impl std::fmt::Display for OptionType {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct KConfig<'a> {
     mainmenu: Option<&'a str>,
     blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
@@ -142,7 +141,7 @@ impl<'a> KConfig<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct KChoice<'a> {
     // option_type _is_ needed here :/
     prompt:      &'a str,
@@ -219,7 +218,7 @@ impl<'a> KChoice<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct KMenu<'a> {
     description: &'a str,
     blocks:  Option<Vec<(&'a str, KConfig<'a>)>>,
@@ -310,7 +309,7 @@ impl<'a> KMenu<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct KCommentBlock<'a> {
     description: &'a str,
     depends: Option<Vec<(&'a str, Option<&'a str>)>>,
@@ -342,7 +341,7 @@ impl<'a> KCommentBlock<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct KOption<'a> {
     pub name:         &'a str,         // This field must always exist
     pub option_type:  OptionType,      // This may be inferred from `def_bool` or `def_tristate`
@@ -470,12 +469,12 @@ impl<'a> KOption<'a> {
                 prompt,
                 conditional,
                 help,
-                range:    if range.is_empty()    { None } else { Some(range)   },
-                depends:  if depends.is_empty()  { None } else { Some(depends) },
-                selects:  if selects.is_empty()  { None } else { Some(selects) },
-                implies:  if implies.is_empty()  { None } else { Some(implies) },
-                defaults: if defaults.is_empty() { None } else { Some(defaults)},
-                def_bool: if def_bool.is_empty() { None } else { Some(def_bool)},
+                range:    if range.is_empty()    { None } else { Some(range)    },
+                depends:  if depends.is_empty()  { None } else { Some(depends)  },
+                selects:  if selects.is_empty()  { None } else { Some(selects)  },
+                implies:  if implies.is_empty()  { None } else { Some(implies)  },
+                defaults: if defaults.is_empty() { None } else { Some(defaults) },
+                def_bool: if def_bool.is_empty() { None } else { Some(def_bool) },
                 def_tristate: if def_tristate.is_empty() { None } else { Some(def_tristate) },
         }))
     }
