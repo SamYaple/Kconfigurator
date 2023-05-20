@@ -1,3 +1,12 @@
+use super::{
+    OptionType,
+    KConfig,
+    expr::{
+        Expr,
+        parse_expr,
+    }
+};
+
 use nom::{
     branch::alt,
     bytes::complete::{
@@ -32,15 +41,6 @@ use nom::{
         delimited,
     },
     IResult,
-};
-
-use super::{
-    OptionType,
-    KConfig,
-    expr::{
-        Expr,
-        expr,
-    }
 };
 
 pub fn count_whitespace(s: &str) -> usize {
@@ -293,7 +293,7 @@ pub fn take_prompt(input: &str) -> IResult<&str, &str> {
 }
 
 pub fn take_expr(input: &str) -> IResult<&str, Expr> {
-    expr(input)
+    parse_expr(input)
 }
 
 pub fn take_cond(input: &str) -> IResult<&str, &str> {

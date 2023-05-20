@@ -1,3 +1,11 @@
+use super::util::{
+    parse_kstring,
+    special_space,
+    take_hex,
+    take_name,
+    take_signed_int,
+};
+
 use nom::{
     IResult,
     bytes::complete::{
@@ -16,14 +24,6 @@ use nom::{
     },
     branch::alt,
     multi::many0,
-};
-
-use super::util::{
-    parse_kstring,
-    special_space,
-    take_hex,
-    take_name,
-    take_signed_int,
 };
 
 #[derive(Debug, PartialEq)]
@@ -112,7 +112,7 @@ fn var(input: &str) -> IResult<&str, Expr> {
 fn parens(input: &str) -> IResult<&str, Expr> {
     delimited(
         tuple((special_space, tag("("), special_space)),
-        expr,
+        parse_expr,
         tuple((special_space, tag(")"), special_space)),
     )(input)
 }
@@ -139,7 +139,7 @@ fn term(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
-pub fn expr(input: &str) -> IResult<&str, Expr> {
+pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
     let (input, init) = term(input)?;
     let (input, terms) = many0(
         preceded(tuple((special_space, tag("||"), special_space)), term)

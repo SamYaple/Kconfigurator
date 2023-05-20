@@ -18,8 +18,8 @@ fn main() {
     println!("kconfigs:");
     for path in matches {
         print!("  \"{}\":", path.display());
-        let content = kconfig::load_from_file(path.display().to_string());
-        let config = kconfig::take_kconfig(&content);
+        let content = load_from_file(path.display().to_string());
+        let config = take_kconfig(&content);
 
         let opts = config.collect_options();
         if opts.is_empty() {
@@ -53,4 +53,29 @@ fn search(path: &Path) -> Vec<PathBuf> {
     }
 
     result
+}
+
+fn load_from_file(path_string: String) -> String {
+    let pathed = std::path::Path::new(&path_string).to_path_buf();
+    match std::fs::read_to_string(pathed) {
+        Ok(content) => return content,
+        Err(e) => {
+            panic!("Failed to open '{}' with error '{}'", path_string, e);
+        }
+    }
+}
+
+
+fn take_kconfig(input: &str) -> kconfig::KConfig {
+    match kconfig::KConfig::parse(input) {
+        Ok((remaining, config)) => {
+            if remaining != "" {
+                panic!("SAMMAS ERROR Unprocessed input:```\n{}'\n```", remaining);
+            }
+            return config;
+        }
+        Err(error) => {
+            panic!("SAMMAS ERROR Proper error:\n{:?}\n\n", error);
+        }
+    }
 }
