@@ -1,9 +1,9 @@
 use super::{
     KCommentBlock,
     KOption,
+    OptionType,
     util::{
         take_comment,
-        take_continued_line,
         take_default,
         take_depends,
         take_help,
@@ -29,7 +29,7 @@ use nom::{
 
 #[derive(Debug)]
 pub struct KChoice<'a> {
-    // option_type _is_ needed here :/
+    pub option_type: OptionType,
     pub prompt:      &'a str,
     pub options:     Vec<KOption<'a>>,
     pub optional:    bool,
@@ -42,6 +42,7 @@ pub struct KChoice<'a> {
 
 impl<'a> KChoice<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let mut opt_option_type = None;
         let mut opt_prompt  = None;
         let mut description = None;
         let mut conditional = None;
@@ -57,30 +58,61 @@ impl<'a> KChoice<'a> {
                 tag("choice"),
                 space0,
             )),
-            tuple((
-                take_continued_line,
-                many1(alt((
-                    map(take_line_ending,     |_| {}),
-                    map(take_comment,         |_| {}),
-                    map(take_depends,         |v| depends.push(v)),
-                    map(take_default,         |v| defaults.push(v)),
-                    map(take_optional,        |_| optional = true),
-                    map(take_prompt,          |v| opt_prompt = Some(v)),
-                    map(take_help,            |v| help = Some(v)),
-                    map(KOption::parse,       |v| options.push(v)),
-                    map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
-                    map(take_type,            |(_opttype, desc, cond)| {
-                        description = desc;
-                        conditional = cond;
-                    }),
-                ))),
-            )),
+            many1(alt((
+                map(take_line_ending,     |_| {}),
+                map(take_comment,         |_| {}),
+                map(take_depends,         |v| depends.push(v)),
+                map(take_default,         |v| defaults.push(v)),
+                map(take_optional,        |_| optional = true),
+                map(take_prompt,          |v| opt_prompt = Some(v)),
+                map(take_help,            |v| help = Some(v)),
+                map(KOption::parse,       |v| options.push(v)),
+                map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
+                map(take_type,            |(opttype, desc, cond)| {
+                    if let Some(option_type) = opt_option_type {
+                        if option_type == opttype {
+                            // This branch indicates the option has the same type declared twice
+                            eprintln!("EC_type_duplicate");
+                        } else {
+                            // This means the type of this option CHANGED, not good at all.
+                            eprintln!("EC_type_overridden");
+                        }
+                    }
+                    opt_option_type = Some(opttype);
+
+                    description = desc;
+                    conditional = cond;
+                }),
+            ))),
             tuple((
                 space0,
                 tag("endchoice"),
                 space0,
             )),
         )(input)?;
+
+        // CODE VOMMIT DO NOT COMMIT!!
+        // it do work tho
+        let mut opt_types = vec![];
+        let mut tmptype = OptionType::Int; 
+        for opt in &options {
+            opt_types.push(opt.option_type);
+            tmptype = opt.option_type;
+        }
+        for optt in opt_types {
+            if optt != tmptype {
+                eprintln!("EC_kchoice_options_differ_in_type");
+            }
+        }
+        let option_type = match opt_option_type {
+            Some(option_type) => {
+                if option_type != tmptype {
+                    eprintln!("EC_kchoice_options_differ_in_type");
+                }
+                option_type
+            },
+            None => tmptype,
+        };
 
         let prompt = match opt_prompt {
             Some(p) => p,
@@ -91,7 +123,9 @@ impl<'a> KChoice<'a> {
                 "PARSING SUCCESSFUL;MISSING PROMPT"
             }
         };
+
         Ok((input, Self{
+                option_type,
                 prompt,
                 description,
                 optional,

@@ -39,6 +39,7 @@ use nom::{
         preceded,
         tuple,
         delimited,
+        terminated,
     },
     IResult,
 };
@@ -231,7 +232,16 @@ pub fn take_named_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, 
         )),
         recognize(take_expr),
     )(input)?;
-    let (input, cond) = opt(take_cond)(input)?;
+    let (input, (cond, _annotation)) = terminated(
+        tuple((
+            opt(take_cond),
+            opt(take_comment),
+        )),
+        tuple((
+            space0,
+            line_ending,
+        )),
+    )(input)?;
     Ok((input, (expr, cond)))
 }
 
