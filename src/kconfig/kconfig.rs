@@ -47,7 +47,7 @@ impl<'a> KConfig<'a> {
             map(KOption::parse,       |v| options.push(v)),
             map(KMenu::parse,         |v| menus.push(v)),
             map(KChoice::parse,       |v| choices.push(v)),
-            map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
+            map(KCommentBlock::parse, |_c| {}), //eprintln!("\n```\n{}```\n", _c)),
         )))(input)?;
         Ok((input, Self{
                 mainmenu,

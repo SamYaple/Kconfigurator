@@ -1,6 +1,9 @@
 use super::{
     OptionType,
     KConfig,
+    Expression,
+    Depends,
+    Condition,
     expr::{
         Expr,
         parse_expr,
@@ -221,6 +224,35 @@ pub fn take_line_ending(input: &str) -> IResult<&str, &str> {
 pub fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, &'a str> {
     let (input, _) = tuple((space0, tag(str_match), space1))(input)?;
     take_continued_line(input)
+}
+
+// TODO: pass in parser in and make return generic... lurn2code
+pub fn parse_option<'a, 'b>(str_match: &'b str) -> impl Fn(&'a str) -> IResult<&'a str, Depends<'a>> + 'b {
+    move |input: &str| -> IResult<&str, Depends> {
+        let (input, (expression, condition, _annotation)) = preceded(
+            tuple((
+                space0,
+                tag(str_match),
+                space1,
+            )),
+            terminated(
+                tuple((
+                    recognize(Expression::parse),
+                    opt(Condition::parse),
+                    opt(take_comment),
+                )),
+                tuple((
+                    space0,
+                    line_ending,
+                )),
+            ),
+        )(input)?;
+
+        Ok((input, Depends {
+            expression: Expression { val: expression },
+            condition: condition,
+        }))
+    }
 }
 
 pub fn take_named_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, (&'a str, Option<&'a str>)> {

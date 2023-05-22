@@ -7,7 +7,12 @@ mod expr;
 mod util;
 
 pub use kchoice::KChoice;
-pub use kcommentblock::KCommentBlock;
+pub use kcommentblock::{
+    KCommentBlock,
+    Depends,
+    Condition,
+    Expression,
+};
 pub use kconfig::KConfig;
 pub use kmenu::KMenu;
 pub use koption::KOption;
