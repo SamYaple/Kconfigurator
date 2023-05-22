@@ -3,6 +3,7 @@ use super::{
     Dependency,
     ReverseDependency,
     WeakReverseDependency,
+    Range,
     util::{
         cleanup_raw_help,
         cleanup_raw_line,
@@ -14,7 +15,6 @@ use super::{
         take_line_ending,
         take_name,
         take_prompt,
-        take_range,
         take_type,
     },
 };
@@ -49,7 +49,7 @@ pub struct KOption<'a> {
     pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>, // This gives a list of defaults to use, with optional condition
     pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `bool` type, then parses a `defaults`
     pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `tristate` type, then parses a `defaults`
-    pub range:        Option<Vec<((&'a str, &'a str), Option<&'a str>)>>, // Only valid for `hex` and `int` types
+    pub ranges:       Option<Vec<Range<'a>>>, // Only valid for `hex` and `int` types
 }
 
 impl<'a> KOption<'a> {
@@ -61,7 +61,7 @@ impl<'a> KOption<'a> {
         let mut conditional = None;
         let mut help        = None;
 
-        let mut range        = vec![];
+        let mut ranges       = vec![];
         let mut depends      = vec![];
         let mut selects      = vec![];
         let mut implies      = vec![];
@@ -86,7 +86,7 @@ impl<'a> KOption<'a> {
                     map(WeakReverseDependency::parse, |v| implies.push(v)),
                     map(take_def_bool,     |v| def_bool.push(v)),
                     map(take_def_tristate, |v| def_tristate.push(v)),
-                    map(take_range,        |v| range.push(v)),
+                    map(Range::parse,      |v| ranges.push(v)),
                     map(take_help,         |v| {
                         if let Some(_) = help {
                             eprintln!("EC_help_overridden");
@@ -152,7 +152,7 @@ impl<'a> KOption<'a> {
         if def_tristate.len() > 0 && option_type != OptionType::Tristate {
             eprintln!("EC_type_mismatch");
         }
-        if range.len() > 0 && (option_type != OptionType::Int && option_type != OptionType::Hex){
+        if ranges.len() > 0 && (option_type != OptionType::Int && option_type != OptionType::Hex){
             eprintln!("EC_range_in_wrong_type");
         }
         //println!("SAMMAS {}", name);
@@ -163,7 +163,7 @@ impl<'a> KOption<'a> {
                 prompt,
                 conditional,
                 help,
-                range:    if range.is_empty()    { None } else { Some(range)    },
+                ranges:   if ranges.is_empty()   { None } else { Some(ranges)   },
                 depends:  if depends.is_empty()  { None } else { Some(depends)  },
                 selects:  if selects.is_empty()  { None } else { Some(selects)  },
                 implies:  if implies.is_empty()  { None } else { Some(implies)  },
@@ -223,6 +223,15 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some!(description);
         print_if_some!(prompt);
         print_if_some!(conditional);
+        print_if_some_list_cond!(def_bool);
+        print_if_some_list_cond!(def_tristate);
+        print_if_some_list_cond!(defaults);
+
+        //if let Some(defaults) = &self.defaults {
+        //    for def in defaults {
+        //        writeln!(f, "\tdefault {}", def)?;
+        //    }
+        //}
 
         if let Some(depends) = &self.depends {
             for dep in depends {
@@ -239,19 +248,9 @@ impl std::fmt::Display for KOption<'_> {
                 writeln!(f, "\timply {}", imply)?;
             }
         }
-        print_if_some_list_cond!(defaults);
-        print_if_some_list_cond!(def_bool);
-        print_if_some_list_cond!(def_tristate);
-
-        if let Some(values) = &self.range {
-            for ((begin, end), cond) in values {
-                writeln!(f, "      range:")?;
-                writeln!(f, "        - begin: {begin}")?;
-                writeln!(f, "          end:   {end}")?;
-                if let Some(c) = cond {
-                    let esc_c = escape_quoted(&cleanup_raw_line(c));
-                    writeln!(f, "          condition: {}", esc_c)?;
-                }
+        if let Some(ranges) = &self.ranges {
+            for range in ranges {
+                writeln!(f, "\trange {}", range)?;
             }
         }
 

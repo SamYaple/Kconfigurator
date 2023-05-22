@@ -233,19 +233,21 @@ pub struct Range<'a> {
 
 impl<'a> Range<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, (start, end, condition)) = preceded(
+        let (input, ((start, _, end), condition)) = preceded(
             tuple((
                 space0,
                 tag("range"),
                 space1,
             )),
             tuple((
-                take_name,
-                take_name,
+                alt((
+                    tuple((take_signed_int, space1, take_signed_int)),
+                    tuple((take_hex,        space1, take_hex)),
+                    tuple((take_name,       space1, take_name)),
+                )),
                 opt(Condition::parse),
             )),
         )(input)?;
-
         Ok((input, Self {
             start,
             end,
@@ -493,21 +495,6 @@ pub fn take_def_tristate(input: &str) -> IResult<&str, (&str, Option<&str>)> {
 
 pub fn take_def_bool(input: &str) -> IResult<&str, (&str, Option<&str>)> {
     take_named_line(input, "def_bool")
-}
-
-pub fn take_range(input: &str) -> IResult<&str, ((&str, &str), Option<&str>)> {
-    let (input, _) = tuple((
-        space0,
-        tag("range"),
-        space1,
-    ))(input)?;
-    let (input, (start, _, end)) = alt((
-        tuple((take_signed_int, space1, take_signed_int)),
-        tuple((take_hex,        space1, take_hex)),
-        tuple((take_name,       space1, take_name)),
-    ))(input)?;
-    let (input, cond) = opt(take_cond)(input)?;
-    Ok((input, ((start, end), cond)))
 }
 
 pub fn take_prompt(input: &str) -> IResult<&str, &str> {
