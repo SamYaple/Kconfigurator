@@ -1,6 +1,8 @@
 use super::{
     OptionType,
     Dependency,
+    ReverseDependency,
+    WeakReverseDependency,
     util::{
         cleanup_raw_help,
         cleanup_raw_line,
@@ -9,12 +11,10 @@ use super::{
         take_def_tristate,
         take_default,
         take_help,
-        take_imply,
         take_line_ending,
         take_name,
         take_prompt,
         take_range,
-        take_selects,
         take_type,
     },
 };
@@ -44,8 +44,8 @@ pub struct KOption<'a> {
     pub conditional:  Option<&'a str>, // This conditional is from the end of description and prompt
     pub help:         Option<&'a str>, // Raw help text, with leading whitespace on each line
     pub depends:      Option<Vec<Dependency<'a>>>, // These are strong dependencies
-    pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>, // These select options directly, avoiding the dependency graph
-    pub implies:      Option<Vec<(&'a str, Option<&'a str>)>>, // This signifies a feature can provided to the implied option
+    pub selects:      Option<Vec<ReverseDependency<'a>>>, // These select options directly, avoiding the dependency graph
+    pub implies:      Option<Vec<WeakReverseDependency<'a>>>, // This signifies a feature can provided to the implied option
     pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>, // This gives a list of defaults to use, with optional condition
     pub def_bool:     Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `bool` type, then parses a `defaults`
     pub def_tristate: Option<Vec<(&'a str, Option<&'a str>)>>, // This is shorthand for `tristate` type, then parses a `defaults`
@@ -81,9 +81,9 @@ impl<'a> KOption<'a> {
                     map(take_comment,      |_| {}),
                     map(take_line_ending,  |_| {}),
                     map(take_default,      |v| defaults.push(v)),
-                    map(Dependency::parse, |v| depends.push(v)),
-                    map(take_selects,      |v| selects.push(v)),
-                    map(take_imply,        |v| implies.push(v)),
+                    map(Dependency::parse,            |v| depends.push(v)),
+                    map(ReverseDependency::parse,     |v| selects.push(v)),
+                    map(WeakReverseDependency::parse, |v| implies.push(v)),
                     map(take_def_bool,     |v| def_bool.push(v)),
                     map(take_def_tristate, |v| def_tristate.push(v)),
                     map(take_range,        |v| range.push(v)),
@@ -229,9 +229,17 @@ impl std::fmt::Display for KOption<'_> {
                 writeln!(f, "\tdepends on {}", dep)?;
             }
         }
+        if let Some(selects) = &self.selects {
+            for sel in selects {
+                writeln!(f, "\tselect {}", sel)?;
+            }
+        }
+        if let Some(implies) = &self.implies {
+            for imply in implies {
+                writeln!(f, "\timply {}", imply)?;
+            }
+        }
         print_if_some_list_cond!(defaults);
-        print_if_some_list_cond!(selects);
-        print_if_some_list_cond!(implies);
         print_if_some_list_cond!(def_bool);
         print_if_some_list_cond!(def_tristate);
 

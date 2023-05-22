@@ -161,7 +161,7 @@ impl<'a> ReverseDependency<'a> {
         let (input, (symbol, condition)) = preceded(
             tuple((
                 space0,
-                tag("selects"),
+                tag("select"),
                 space1,
             )),
             tuple((
@@ -483,10 +483,6 @@ pub fn take_visible(input: &str) -> IResult<&str, &str> {
     Ok((input, cond))
 }
 
-pub fn take_imply(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "imply")
-}
-
 pub fn take_default(input: &str) -> IResult<&str, (&str, Option<&str>)> {
     take_named_line(input, "default")
 }
@@ -538,10 +534,6 @@ pub fn special_space(input: &str) -> IResult<&str, &str> {
         space1,
         tag("\\\n"),
     ))))(input)
-}
-
-pub fn take_selects(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "select")
 }
 
 pub fn take_optional(input: &str) -> IResult<&str, bool> {
