@@ -217,12 +217,19 @@ impl std::fmt::Display for KOption<'_> {
             };
         }
 
-        writeln!(f, "    - name: {}", escape_quoted(self.name))?;
-        writeln!(f, "      type: {}", self.option_type)?;
+        writeln!(f, "config {}", self.name)?;
+        write!(f, "\t{}", self.option_type)?;
+        if let Some(prompt) = self.description { // TODO: get rid of description; merge into prompt
+            write!(f, " \"{}\"", prompt)?;
+        }
+        if let Some(prompt) = self.prompt {
+            write!(f, " \"{}\"", prompt)?;
+        }
+        if let Some(conditional) = self.conditional {
+            write!(f, " {}", conditional)?;
+        }
+        writeln!(f)?;
 
-        print_if_some!(description);
-        print_if_some!(prompt);
-        print_if_some!(conditional);
         print_if_some_list_cond!(def_bool);
         print_if_some_list_cond!(def_tristate);
         print_if_some_list_cond!(defaults);
@@ -255,9 +262,13 @@ impl std::fmt::Display for KOption<'_> {
         }
 
         if let Some(text) = &self.help {
-            writeln!(f, "      help: |")?;
+            writeln!(f, "\thelp")?;
             for l in cleanup_raw_help(text).split('\n') {
-                writeln!(f, "        {}", l)?;
+                if l.is_empty() {
+                    writeln!(f)?;
+                } else {
+                    writeln!(f, "\t  {}", l)?;
+                }
             }
         }
         Ok(())

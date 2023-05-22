@@ -55,11 +55,11 @@ pub enum OptionType {
 impl std::fmt::Display for OptionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OptionType::Tristate => write!(f, "\"tristate\""),
-            OptionType::Bool     => write!(f, "\"bool\""),
-            OptionType::Hex      => write!(f, "\"hex\""),
-            OptionType::Int      => write!(f, "\"int\""),
-            OptionType::Str      => write!(f, "\"str\""),
+            OptionType::Tristate => write!(f, "tristate"),
+            OptionType::Bool     => write!(f, "bool"),
+            OptionType::Hex      => write!(f, "hex"),
+            OptionType::Int      => write!(f, "int"),
+            OptionType::Str      => write!(f, "str"),
         }
     }
 }
