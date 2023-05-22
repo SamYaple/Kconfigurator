@@ -2,9 +2,7 @@ use super::util::{
     take_comment,
     take_line_ending,
     parse_kstring,
-    take_expr,
-    take_cond,
-    parse_option,
+    Dependency,
 };
 
 use nom::{
@@ -14,10 +12,7 @@ use nom::{
         space0,
         space1,
     },
-    combinator::{
-        map,
-        recognize,
-    },
+    combinator::map,
     multi::many0,
     sequence::{
         preceded,
@@ -27,73 +22,9 @@ use nom::{
 };
 
 #[derive(Debug)]
-pub struct Expression<'a> {
-    pub val: &'a str,  // NOTE: transition hack before we switch to expr::Expr
-}
-
-impl<'a> Expression<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, e) = recognize(take_expr)(input)?;
-        Ok((input, Self{
-            val: e,
-        }))
-    }
-}
-
-impl std::fmt::Display for Expression<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.val)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct Condition<'a> {
-    pub expression: Expression<'a>,
-}
-
-impl<'a> Condition<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, c) = take_cond(input)?;
-        Ok((input, Self{
-            expression: Expression{ val: c },
-        }))
-    }
-}
-
-impl std::fmt::Display for Condition<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "if {}", self.expression)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct Depends<'a> {
-    pub expression: Expression<'a>,
-    pub condition:  Option<Condition<'a>>,
-}
-
-impl<'a> Depends<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        parse_option("depends on")(input)
-    }
-}
-
-impl std::fmt::Display for Depends<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.expression)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
 pub struct KCommentBlock<'a> {
     pub prompt:  &'a str,
-    pub depends: Option<Vec<Depends<'a>>>,
+    pub depends: Option<Vec<Dependency<'a>>>,
 }
 
 impl std::fmt::Display for KCommentBlock<'_> {
@@ -124,7 +55,7 @@ impl<'a> KCommentBlock<'a> {
                 many0(alt((
                     map(take_line_ending, |_| {}),
                     map(take_comment,     |_| {}),
-                    map(Depends::parse,   |v| depends.push(v)),
+                    map(Dependency::parse, |v| depends.push(v)),
                 ))),
             )),
         )(input)?;

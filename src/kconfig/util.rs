@@ -1,9 +1,5 @@
 use super::{
-    OptionType,
     KConfig,
-    Expression,
-    Depends,
-    Condition,
     expr::{
         Expr,
         parse_expr,
@@ -46,6 +42,227 @@ use nom::{
     },
     IResult,
 };
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum OptionType {
+    Tristate,
+    Bool,
+    Hex,
+    Int,
+    Str,
+}
+
+impl std::fmt::Display for OptionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OptionType::Tristate => write!(f, "\"tristate\""),
+            OptionType::Bool     => write!(f, "\"bool\""),
+            OptionType::Hex      => write!(f, "\"hex\""),
+            OptionType::Int      => write!(f, "\"int\""),
+            OptionType::Str      => write!(f, "\"str\""),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Expression<'a> {
+    pub val: &'a str,  // NOTE: transition hack before we switch to expr::Expr
+}
+
+impl<'a> Expression<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, e) = recognize(take_expr)(input)?;
+        Ok((input, Self{
+            val: e,
+        }))
+    }
+}
+
+impl std::fmt::Display for Expression<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.val)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Condition<'a> {
+    pub expression: Expression<'a>,
+}
+
+impl<'a> Condition<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, c) = preceded(
+            tuple((
+                special_space,
+                tag("if"),
+                special_space,
+            )),
+            recognize(take_expr)
+        )(input)?;
+        Ok((input, Self{
+            expression: Expression{ val: c },
+        }))
+    }
+}
+
+impl std::fmt::Display for Condition<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "if {}", self.expression)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Dependency<'a> {
+    pub expression: Expression<'a>,
+    pub condition:  Option<Condition<'a>>,
+}
+
+impl<'a> Dependency<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, (expression, condition)) = preceded(
+            tuple((
+                space0,
+                tag("depends on"),
+                space1,
+            )),
+            tuple((
+                Expression::parse,
+                opt(Condition::parse),
+            )),
+        )(input)?;
+
+        Ok((input, Self {
+            expression,
+            condition,
+        }))
+    }
+}
+
+impl std::fmt::Display for Dependency<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.expression)?;
+        if let Some(condition) = &self.condition {
+            write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct ReverseDependency<'a> {
+    pub symbol:    &'a str,
+    pub condition: Option<Condition<'a>>,
+}
+
+impl<'a> ReverseDependency<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, (symbol, condition)) = preceded(
+            tuple((
+                space0,
+                tag("selects"),
+                space1,
+            )),
+            tuple((
+                take_name,
+                opt(Condition::parse),
+            )),
+        )(input)?;
+
+        Ok((input, Self {
+            symbol,
+            condition,
+        }))
+    }
+}
+
+impl std::fmt::Display for ReverseDependency<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.symbol)?;
+        if let Some(condition) = &self.condition {
+            write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct WeakReverseDependency<'a> {
+    pub symbol:    &'a str,
+    pub condition: Option<Condition<'a>>,
+}
+
+impl<'a> WeakReverseDependency<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, (symbol, condition)) = preceded(
+            tuple((
+                space0,
+                tag("imply"),
+                space1,
+            )),
+            tuple((
+                take_name,
+                opt(Condition::parse),
+            )),
+        )(input)?;
+
+        Ok((input, Self {
+            symbol,
+            condition,
+        }))
+    }
+}
+
+impl std::fmt::Display for WeakReverseDependency<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.symbol)?;
+        if let Some(condition) = &self.condition {
+            write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Range<'a> {
+    pub start:     &'a str,
+    pub end:       &'a str,
+    pub condition: Option<Condition<'a>>,
+}
+
+impl<'a> Range<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, (start, end, condition)) = preceded(
+            tuple((
+                space0,
+                tag("range"),
+                space1,
+            )),
+            tuple((
+                take_name,
+                take_name,
+                opt(Condition::parse),
+            )),
+        )(input)?;
+
+        Ok((input, Self {
+            start,
+            end,
+            condition,
+        }))
+    }
+}
+
+impl std::fmt::Display for Range<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.start, self.end)?;
+        if let Some(condition) = &self.condition {
+            write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
 
 pub fn count_whitespace(s: &str) -> usize {
     let mut count = 0;
@@ -226,35 +443,6 @@ pub fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str,
     take_continued_line(input)
 }
 
-// TODO: pass in parser in and make return generic... lurn2code
-pub fn parse_option<'a, 'b>(str_match: &'b str) -> impl Fn(&'a str) -> IResult<&'a str, Depends<'a>> + 'b {
-    move |input: &str| -> IResult<&str, Depends> {
-        let (input, (expression, condition, _annotation)) = preceded(
-            tuple((
-                space0,
-                tag(str_match),
-                space1,
-            )),
-            terminated(
-                tuple((
-                    recognize(Expression::parse),
-                    opt(Condition::parse),
-                    opt(take_comment),
-                )),
-                tuple((
-                    space0,
-                    line_ending,
-                )),
-            ),
-        )(input)?;
-
-        Ok((input, Depends {
-            expression: Expression { val: expression },
-            condition: condition,
-        }))
-    }
-}
-
 pub fn take_named_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, (&'a str, Option<&'a str>)> {
     let (input, expr) = preceded(
         tuple((
@@ -309,10 +497,6 @@ pub fn take_def_tristate(input: &str) -> IResult<&str, (&str, Option<&str>)> {
 
 pub fn take_def_bool(input: &str) -> IResult<&str, (&str, Option<&str>)> {
     take_named_line(input, "def_bool")
-}
-
-pub fn take_depends(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "depends on")
 }
 
 pub fn take_range(input: &str) -> IResult<&str, ((&str, &str), Option<&str>)> {

@@ -1,5 +1,6 @@
 use super::{
     OptionType,
+    Dependency,
     util::{
         cleanup_raw_help,
         cleanup_raw_line,
@@ -7,7 +8,6 @@ use super::{
         take_def_bool,
         take_def_tristate,
         take_default,
-        take_depends,
         take_help,
         take_imply,
         take_line_ending,
@@ -43,7 +43,7 @@ pub struct KOption<'a> {
     pub prompt:       Option<&'a str>, // prompt exists as its own key
     pub conditional:  Option<&'a str>, // This conditional is from the end of description and prompt
     pub help:         Option<&'a str>, // Raw help text, with leading whitespace on each line
-    pub depends:      Option<Vec<(&'a str, Option<&'a str>)>>, // These are strong dependencies
+    pub depends:      Option<Vec<Dependency<'a>>>, // These are strong dependencies
     pub selects:      Option<Vec<(&'a str, Option<&'a str>)>>, // These select options directly, avoiding the dependency graph
     pub implies:      Option<Vec<(&'a str, Option<&'a str>)>>, // This signifies a feature can provided to the implied option
     pub defaults:     Option<Vec<(&'a str, Option<&'a str>)>>, // This gives a list of defaults to use, with optional condition
@@ -81,7 +81,7 @@ impl<'a> KOption<'a> {
                     map(take_comment,      |_| {}),
                     map(take_line_ending,  |_| {}),
                     map(take_default,      |v| defaults.push(v)),
-                    map(take_depends,      |v| depends.push(v)),
+                    map(Dependency::parse, |v| depends.push(v)),
                     map(take_selects,      |v| selects.push(v)),
                     map(take_imply,        |v| implies.push(v)),
                     map(take_def_bool,     |v| def_bool.push(v)),
@@ -224,7 +224,11 @@ impl std::fmt::Display for KOption<'_> {
         print_if_some!(prompt);
         print_if_some!(conditional);
 
-        print_if_some_list_cond!(depends);
+        if let Some(depends) = &self.depends {
+            for dep in depends {
+                writeln!(f, "\tdepends on {}", dep)?;
+            }
+        }
         print_if_some_list_cond!(defaults);
         print_if_some_list_cond!(selects);
         print_if_some_list_cond!(implies);

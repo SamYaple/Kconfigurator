@@ -2,10 +2,10 @@ use super::{
     KCommentBlock,
     KOption,
     OptionType,
+    Dependency,
     util::{
         take_comment,
         take_default,
-        take_depends,
         take_help,
         take_optional,
         take_prompt,
@@ -35,7 +35,7 @@ pub struct KChoice<'a> {
     pub optional:    bool,
     pub conditional: Option<&'a str>,
     pub defaults:    Option<Vec<(&'a str, Option<&'a str>)>>,
-    pub depends:     Option<Vec<(&'a str, Option<&'a str>)>>,
+    pub depends:     Option<Vec<Dependency<'a>>>,
     pub description: Option<&'a str>,
     pub help:        Option<&'a str>,
 }
@@ -61,7 +61,7 @@ impl<'a> KChoice<'a> {
             many1(alt((
                 map(take_line_ending,     |_| {}),
                 map(take_comment,         |_| {}),
-                map(take_depends,         |v| depends.push(v)),
+                map(Dependency::parse,    |v| depends.push(v)),
                 map(take_default,         |v| defaults.push(v)),
                 map(take_optional,        |_| optional = true),
                 map(take_prompt,          |v| opt_prompt = Some(v)),
