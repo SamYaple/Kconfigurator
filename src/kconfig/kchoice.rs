@@ -7,7 +7,6 @@ use super::{
     Prompt,
     util::{
         take_comment,
-        take_default,
         take_optional,
         take_line_ending,
     },
@@ -35,7 +34,7 @@ pub struct KChoice<'a> {
     pub prompts:     Vec<Prompt<'a>>,
     pub options:     Vec<KOption<'a>>,
     pub optional:    bool,
-    pub defaults:    Option<Vec<(&'a str, Option<&'a str>)>>,
+    pub defaults:    Option<Vec<Dependency<'a>>>,
     pub depends:     Option<Vec<Dependency<'a>>>,
     pub help:        Option<Help<'a>>,
 }
@@ -63,14 +62,14 @@ impl<'a> KChoice<'a> {
                 space0,
             )),
             many1(alt((
-                map(take_line_ending,        |_| {}),
-                map(take_comment,            |_| {}),
-                map(take_default,            |v| defaults.push(v)),
-                map(take_optional,           |_| optional = true),
-                map(Help::parse("help"),     |v| help = Some(v)),
-                map(KOption::parse,          |v| options.push(v)),
-                map(KCommentBlock::parse,    |_| {}), // TODO: something useful with these?
-                map(Prompt::parse("prompt"), |v| prompts.push(v)),
+                map(take_line_ending,                |_| {}),
+                map(take_comment,                    |_| {}),
+                map(take_optional,                   |_| optional = true),
+                map(Help::parse("help"),             |v| help = Some(v)),
+                map(KOption::parse,                  |v| options.push(v)),
+                map(KCommentBlock::parse,            |_| {}), // TODO: something useful with these?
+                map(Prompt::parse("prompt"),         |v| prompts.push(v)),
+                map(Dependency::parse("default"),    |v| defaults.push(v)),
                 map(Dependency::parse("depends on"), |v| depends.push(v)),
                 map(type_line_parser,  |(opttype, opt_prompt)| {
                     opt_option_type = Some(opttype);

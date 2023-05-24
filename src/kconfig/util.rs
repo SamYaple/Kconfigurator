@@ -38,7 +38,6 @@ use nom::{
         preceded,
         tuple,
         delimited,
-        terminated,
     },
     IResult,
 };
@@ -445,28 +444,6 @@ pub fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str,
     take_continued_line(input)
 }
 
-pub fn take_named_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, (&'a str, Option<&'a str>)> {
-    let (input, expr) = preceded(
-        tuple((
-            space0,
-            tag(str_match),
-            space1,
-        )),
-        recognize(take_expr),
-    )(input)?;
-    let (input, (cond, _annotation)) = terminated(
-        tuple((
-            opt(take_cond),
-            opt(take_comment),
-        )),
-        tuple((
-            space0,
-            line_ending,
-        )),
-    )(input)?;
-    Ok((input, (expr, cond)))
-}
-
 pub fn take_mainmenu(input: &str) -> IResult<&str, &str> {
     take_tagged_line(input, "mainmenu")
 }
@@ -483,10 +460,6 @@ pub fn take_visible(input: &str) -> IResult<&str, &str> {
     ))(input)?;
     let (input, cond) = recognize(take_expr)(input)?;
     Ok((input, cond))
-}
-
-pub fn take_default(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "default")
 }
 
 pub fn take_expr(input: &str) -> IResult<&str, Expr> {
