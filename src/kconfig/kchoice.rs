@@ -3,14 +3,13 @@ use super::{
     KOption,
     OptionType,
     Dependency,
+    Help,
+    Prompt,
     util::{
         take_comment,
         take_default,
-        take_help,
         take_optional,
-        take_prompt,
         take_line_ending,
-        take_type,
     },
 };
 
@@ -18,7 +17,10 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::space0,
-    combinator::map,
+    combinator::{
+        map,
+        opt,
+    },
     multi::many1,
     sequence::{
         delimited,
@@ -30,27 +32,29 @@ use nom::{
 #[derive(Debug)]
 pub struct KChoice<'a> {
     pub option_type: OptionType,
-    pub prompt:      &'a str,
+    pub prompts:     Vec<Prompt<'a>>,
     pub options:     Vec<KOption<'a>>,
     pub optional:    bool,
-    pub conditional: Option<&'a str>,
     pub defaults:    Option<Vec<(&'a str, Option<&'a str>)>>,
     pub depends:     Option<Vec<Dependency<'a>>>,
-    pub description: Option<&'a str>,
-    pub help:        Option<&'a str>,
+    pub help:        Option<Help<'a>>,
 }
 
 impl<'a> KChoice<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
         let mut opt_option_type = None;
-        let mut opt_prompt  = None;
-        let mut description = None;
-        let mut conditional = None;
+        let mut opt_prompt_from_type = None;
         let mut help = None;
         let mut optional = false;
         let mut depends  = vec![];
         let mut defaults = vec![];
         let mut options  = vec![];
+        let mut prompts  = vec![];
+
+        let type_line_parser = tuple((
+            OptionType::parse,
+            opt(Prompt::parse("")),
+        ));
 
         let (input, _) = delimited(
             tuple((
@@ -59,29 +63,18 @@ impl<'a> KChoice<'a> {
                 space0,
             )),
             many1(alt((
-                map(take_line_ending,     |_| {}),
-                map(take_comment,         |_| {}),
-                map(Dependency::parse,    |v| depends.push(v)),
-                map(take_default,         |v| defaults.push(v)),
-                map(take_optional,        |_| optional = true),
-                map(take_prompt,          |v| opt_prompt = Some(v)),
-                map(take_help,            |v| help = Some(v)),
-                map(KOption::parse,       |v| options.push(v)),
-                map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
-                map(take_type,            |(opttype, desc, cond)| {
-                    if let Some(option_type) = opt_option_type {
-                        if option_type == opttype {
-                            // This branch indicates the option has the same type declared twice
-                            eprintln!("EC_type_duplicate");
-                        } else {
-                            // This means the type of this option CHANGED, not good at all.
-                            eprintln!("EC_type_overridden");
-                        }
-                    }
+                map(take_line_ending,        |_| {}),
+                map(take_comment,            |_| {}),
+                map(take_default,            |v| defaults.push(v)),
+                map(take_optional,           |_| optional = true),
+                map(Help::parse("help"),     |v| help = Some(v)),
+                map(KOption::parse,          |v| options.push(v)),
+                map(KCommentBlock::parse,    |_| {}), // TODO: something useful with these?
+                map(Prompt::parse("prompt"), |v| prompts.push(v)),
+                map(Dependency::parse("depends on"), |v| depends.push(v)),
+                map(type_line_parser,  |(opttype, opt_prompt)| {
                     opt_option_type = Some(opttype);
-
-                    description = desc;
-                    conditional = cond;
+                    opt_prompt_from_type = opt_prompt;
                 }),
             ))),
             tuple((
@@ -114,24 +107,16 @@ impl<'a> KChoice<'a> {
             None => tmptype,
         };
 
-        let prompt = match opt_prompt {
-            Some(p) => p,
-            None => {
-                if description.is_none() {
-                    eprintln!("EC_kchoice_no_prompt");
-                }
-                "PARSING SUCCESSFUL;MISSING PROMPT"
-            }
-        };
+        if let Some(prompt) = opt_prompt_from_type {
+            prompts.push(prompt);
+        }
 
         Ok((input, Self{
                 option_type,
-                prompt,
-                description,
                 optional,
-                conditional,
+                prompts,
                 defaults: if defaults.is_empty() { None } else { Some(defaults) },
-                depends:  if depends.is_empty()  { None } else { Some(depends) },
+                depends:  if depends.is_empty()  { None } else { Some(depends)  },
                 help,
                 options,
         }))

@@ -17,6 +17,7 @@ pub use util::{
     Range,
     Dependency,
     ReverseDependency,
-    WeakReverseDependency,
     OptionType,
+    Help,
+    Prompt,
 };

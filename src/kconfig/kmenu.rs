@@ -66,7 +66,7 @@ impl<'a> KMenu<'a> {
                     map(KMenu::parse,         |v| menus.push(v)),
                     map(KOption::parse,       |v| options.push(v)),
                     map(take_visible,         |v| visible.push(v)),
-                    map(Dependency::parse,    |v| depends.push(v)),
+                    map(Dependency::parse("depends on"), |v| depends.push(v)),
                     map(take_source_kconfig,  |v| configs.push(v)),
                     map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
                 ))),

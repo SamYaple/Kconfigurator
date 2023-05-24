@@ -52,6 +52,20 @@ pub enum OptionType {
     Str,
 }
 
+impl OptionType {
+    pub fn parse(input: &str) -> IResult<&str, OptionType> {
+        let (input, _) = space0(input)?;
+        alt((
+            map(tag("bool"),     |_| OptionType::Bool),
+            map(tag("hex"),      |_| OptionType::Hex),
+            map(tag("int"),      |_| OptionType::Int),
+            map(tag("string"),   |_| OptionType::Str),
+            map(tag("tristate"), |_| OptionType::Tristate),
+        ))(input)
+    }
+}
+
+
 impl std::fmt::Display for OptionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -114,29 +128,70 @@ impl std::fmt::Display for Condition<'_> {
 }
 
 #[derive(Debug)]
+pub struct Prompt<'a> {
+    pub text:       &'a str,
+    pub condition:  Option<Condition<'a>>,
+}
+
+impl<'a> Prompt<'a> {
+    pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, Prompt<'a>> + '_ {
+        move |input: &str| -> IResult<&str, Self> {
+            let (input, (text, condition)) = preceded(
+                tuple((
+                    space0,
+                    tag(str_match),
+                    space0,
+                )),
+                tuple((
+                    parse_kstring,
+                    opt(Condition::parse),
+                )),
+            )(input)?;
+
+            Ok((input, Self {
+                text,
+                condition,
+            }))
+        }
+    }
+}
+
+impl std::fmt::Display for Prompt<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.text)?;
+        if let Some(condition) = &self.condition {
+            write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct Dependency<'a> {
     pub expression: Expression<'a>,
     pub condition:  Option<Condition<'a>>,
 }
 
 impl<'a> Dependency<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, (expression, condition)) = preceded(
-            tuple((
-                space0,
-                tag("depends on"),
-                space1,
-            )),
-            tuple((
-                Expression::parse,
-                opt(Condition::parse),
-            )),
-        )(input)?;
+    pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, Dependency<'a>> + '_ {
+        move |input: &str| -> IResult<&str, Self> {
+            let (input, (expression, condition)) = preceded(
+                tuple((
+                    space0,
+                    tag(str_match),
+                    space1,
+                )),
+                tuple((
+                    Expression::parse,
+                    opt(Condition::parse),
+                )),
+            )(input)?;
 
-        Ok((input, Self {
-            expression,
-            condition,
-        }))
+            Ok((input, Self {
+                expression,
+                condition,
+            }))
+        }
     }
 }
 
@@ -157,64 +212,29 @@ pub struct ReverseDependency<'a> {
 }
 
 impl<'a> ReverseDependency<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, (symbol, condition)) = preceded(
-            tuple((
-                space0,
-                tag("select"),
-                space1,
-            )),
-            tuple((
-                take_name,
-                opt(Condition::parse),
-            )),
-        )(input)?;
+    pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, ReverseDependency> + '_ {
+        move |input: &str| -> IResult<&str, Self> {
+            let (input, (symbol, condition)) = preceded(
+                tuple((
+                    space0,
+                    tag(str_match),
+                    space1,
+                )),
+                tuple((
+                    take_name,
+                    opt(Condition::parse),
+                )),
+            )(input)?;
 
-        Ok((input, Self {
-            symbol,
-            condition,
-        }))
+            Ok((input, Self {
+                symbol,
+                condition,
+            }))
+        }
     }
 }
 
 impl std::fmt::Display for ReverseDependency<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.symbol)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct WeakReverseDependency<'a> {
-    pub symbol:    &'a str,
-    pub condition: Option<Condition<'a>>,
-}
-
-impl<'a> WeakReverseDependency<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, (symbol, condition)) = preceded(
-            tuple((
-                space0,
-                tag("imply"),
-                space1,
-            )),
-            tuple((
-                take_name,
-                opt(Condition::parse),
-            )),
-        )(input)?;
-
-        Ok((input, Self {
-            symbol,
-            condition,
-        }))
-    }
-}
-
-impl std::fmt::Display for WeakReverseDependency<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.symbol)?;
         if let Some(condition) = &self.condition {
@@ -232,27 +252,29 @@ pub struct Range<'a> {
 }
 
 impl<'a> Range<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, ((start, _, end), condition)) = preceded(
-            tuple((
-                space0,
-                tag("range"),
-                space1,
-            )),
-            tuple((
-                alt((
-                    tuple((take_signed_int, space1, take_signed_int)),
-                    tuple((take_hex,        space1, take_hex)),
-                    tuple((take_name,       space1, take_name)),
+    pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, Range<'a>> + '_ {
+        move |input: &str| -> IResult<&str, Self> {
+            let (input, ((start, _, end), condition)) = preceded(
+                tuple((
+                    space0,
+                    tag(str_match),
+                    space1,
                 )),
-                opt(Condition::parse),
-            )),
-        )(input)?;
-        Ok((input, Self {
-            start,
-            end,
-            condition,
-        }))
+                tuple((
+                    alt((
+                        tuple((take_signed_int, space1, take_signed_int)),
+                        tuple((take_hex,        space1, take_hex)),
+                        tuple((take_name,       space1, take_name)),
+                    )),
+                    opt(Condition::parse),
+                )),
+            )(input)?;
+            Ok((input, Self {
+                start,
+                end,
+                condition,
+            }))
+        }
     }
 }
 
@@ -261,6 +283,56 @@ impl std::fmt::Display for Range<'_> {
         write!(f, "{} {}", self.start, self.end)?;
         if let Some(condition) = &self.condition {
             write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Help<'a> {
+    pub text: Vec<&'a str>,
+}
+
+impl<'a> Help<'a> {
+    pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, Help> + '_ {
+        move |input: &str| -> IResult<&str, Self> {
+            //let (input, _) = space0(input)?;
+            //let (input, _) = tag("help")(input)?;
+            //let (input, _) = many1(tuple((space0, line_ending)))(input)?;
+            //let (_, raw_ws) = space1(input)?;
+            //let ws = count_whitespace(raw_ws);
+            //recognize(many1(alt((
+            //    tag("\n"),
+            //    take_while_help(ws),
+            //))))(input)
+            let (input, _) = tuple((
+                    space0,
+                    tag(str_match),
+                    many1(tuple((
+                        space0,
+                        tag("\n"),
+                    ))),
+            ))(input)?;
+
+            let (_, raw_whitespace) = space1(input)?;
+            let initial_whitespace = count_whitespace(raw_whitespace);
+
+            let (input, text) = many1(alt((
+                    take_while_help(initial_whitespace),
+                    tag("\n"),
+            )))(input)?;
+
+            Ok((input, Self {
+                text,
+            }))
+        }
+    }
+}
+
+impl std::fmt::Display for Help<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for line in &self.text {
+            write!(f, "  {}", line)?;
         }
         Ok(())
     }
@@ -279,46 +351,7 @@ pub fn count_whitespace(s: &str) -> usize {
     count
 }
 
-pub fn prefix_spaces(n: usize) -> String {
-    let mut result = String::with_capacity(n);
-    for _ in 0..n {
-        result.push(' ');
-    }
-    result
-}
-
-pub fn cleanup_raw_help(text: &str) -> String {
-    // Preserve the whitespace structure while trimming the text in the help functions
-    let init_ws = count_whitespace(text);
-    let mut help = String::new();
-    for l in text.split('\n') {
-        let line_ws = count_whitespace(l);
-        if line_ws < init_ws {
-            help += l.trim_start();
-            help += "\n";
-        } else {
-            let padding = line_ws - init_ws;
-            help += &prefix_spaces(padding);
-            help += l.trim_start();
-            help += "\n";
-        }
-    }
-    help.trim_end().to_string()
-}
-
-pub fn take_help(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    let (input, _) = tag("help")(input)?;
-    let (input, _) = many1(tuple((space0, line_ending)))(input)?;
-    let (_, raw_ws) = space1(input)?;
-    let ws = count_whitespace(raw_ws);
-    recognize(many1(alt((
-        tag("\n"),
-        take_while_help(ws),
-    ))))(input)
-}
-
-pub fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
+fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
     move |input: &str| -> IResult<&str, &str> {
         // First we need to record the amount of whitespace (tab==8, space=1) on the initial line
         let (_, raw_ws) = space1(input)?;
@@ -343,21 +376,6 @@ pub fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
             Ok((input, line))
         }
     }
-}
-
-pub fn cleanup_raw_line(text: &str) -> String {
-    let mut result = String::new();
-    for l in text.split('\n') {
-        let mut cleaned_line = l.trim_start().to_string();
-        if cleaned_line.chars().last() == Some('\\') {
-            cleaned_line.pop();
-        }
-        if !result.is_empty() {
-            result.push_str(&" ");
-        }
-        result.push_str(&cleaned_line.trim_end());
-    }
-    result
 }
 
 pub fn is_hex(chr: u8) -> bool {
@@ -389,16 +407,6 @@ pub fn take_name(input: &str) -> IResult<&str, &str> {
     take_while1(is_config_name)(input)
 }
 
-pub fn parse_opttype(input: &str) -> IResult<&str, OptionType> {
-    alt((
-        map(tag("bool"),     |_| OptionType::Bool),
-        map(tag("hex"),      |_| OptionType::Hex),
-        map(tag("int"),      |_| OptionType::Int),
-        map(tag("string"),   |_| OptionType::Str),
-        map(tag("tristate"), |_| OptionType::Tristate),
-    ))(input)
-}
-
 pub fn parse_kstring(input: &str) -> IResult<&str, &str> {
     // NOTE: this will take newlines and other chars which are not valid
     preceded(
@@ -426,14 +434,6 @@ pub fn parse_kstring(input: &str) -> IResult<&str, &str> {
             ),
         ))
     )(input)
-}
-
-pub fn take_type(input: &str) -> IResult<&str, (OptionType, Option<&str>, Option<&str>)> {
-    let (input, _) = space0(input)?;
-    let (input, opttype) = parse_opttype(input)?;
-    let (input, description) = opt(parse_kstring)(input)?;
-    let (input, conditional) = opt(take_cond)(input)?;
-    Ok((input, (opttype, description, conditional)))
 }
 
 pub fn take_line_ending(input: &str) -> IResult<&str, &str> {
@@ -487,18 +487,6 @@ pub fn take_visible(input: &str) -> IResult<&str, &str> {
 
 pub fn take_default(input: &str) -> IResult<&str, (&str, Option<&str>)> {
     take_named_line(input, "default")
-}
-
-pub fn take_def_tristate(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "def_tristate")
-}
-
-pub fn take_def_bool(input: &str) -> IResult<&str, (&str, Option<&str>)> {
-    take_named_line(input, "def_bool")
-}
-
-pub fn take_prompt(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "prompt")
 }
 
 pub fn take_expr(input: &str) -> IResult<&str, Expr> {

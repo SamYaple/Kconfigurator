@@ -55,7 +55,7 @@ impl<'a> KCommentBlock<'a> {
                 many0(alt((
                     map(take_line_ending, |_| {}),
                     map(take_comment,     |_| {}),
-                    map(Dependency::parse, |v| depends.push(v)),
+                    map(Dependency::parse("depends on"), |v| depends.push(v)),
                 ))),
             )),
         )(input)?;

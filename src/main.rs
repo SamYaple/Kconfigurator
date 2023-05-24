@@ -15,19 +15,20 @@ fn main() {
     let matches = search(&Path::new(dir));
 
     // janky yaml output for loading into python...
-    println!("kconfigs:");
+    //println!("kconfigs:");
     for path in matches {
-        print!("  \"{}\":", path.display());
+        //print!("  \"{}\":", path.display());
         let content = load_from_file(path.display().to_string());
         let config = take_kconfig(&content);
 
         let opts = config.collect_options();
-        if opts.is_empty() {
-            println!(" []");
-        } else {
-            println!();
+        if !opts.is_empty() {
             for opt in opts {
-                println!("{}", opt);
+                if let Some(prompts) = &opt.prompts {
+                    if prompts.len() > 1 {
+                        println!("{}", opt);
+                    }
+                }
             }
         }
     }
@@ -44,9 +45,6 @@ fn search(path: &Path) -> Vec<PathBuf> {
                     result.extend(search(&path));
                 } else if path.file_name().map_or(false, |f| f.to_string_lossy().starts_with("Kconfig")) { 
 					result.push(path.to_path_buf());
-                    //if let Some(parent) = path.parent() {
-                    //    result.push(parent.to_path_buf());
-                    //}
                 }
             }
         }
