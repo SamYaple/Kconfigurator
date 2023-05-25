@@ -20,4 +20,5 @@ pub use util::{
     OptionType,
     Help,
     Prompt,
+    Symbol,
 };

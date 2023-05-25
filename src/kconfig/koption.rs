@@ -5,10 +5,10 @@ use super::{
     Range,
     Help,
     Prompt,
+    Symbol,
     util::{
         take_comment,
         take_line_ending,
-        take_name,
     },
 };
 
@@ -33,14 +33,29 @@ use nom::{
 
 #[derive(Debug)]
 pub struct KOption<'a> {
-    pub name:         &'a str,         // This field must always exist
-    pub option_type:  OptionType,      // This may be inferred from `def_bool` or `def_tristate`
-    pub prompts:      Option<Vec<Prompt<'a>>>, // prompt exists as its own key
-    pub help:         Option<Help<'a>>, // Raw help text, with leading whitespace on each line
-    pub depends:      Option<Vec<Dependency<'a>>>, // These are strong dependencies
-    pub selects:      Option<Vec<ReverseDependency<'a>>>, // These select options directly, avoiding the dependency graph
-    pub implies:      Option<Vec<ReverseDependency<'a>>>, // This signifies a feature can provided to the implied option
-    pub defaults:     Option<Vec<Dependency<'a>>>, // This gives a list of defaults to use, with optional condition
+    // This field must always exist
+    pub name:         Symbol<'a>,
+
+    // This may be inferred from `def_bool` or `def_tristate`
+    pub option_type:  OptionType,
+
+    // Raw help text, with leading whitespace on each line
+    pub help:         Option<Help<'a>>,
+
+    // prompt exists as its own key
+    pub prompts:      Option<Vec<Prompt<'a>>>,
+
+    // These are strong dependencies
+    pub depends:      Option<Vec<Dependency<'a>>>,
+
+    // These select options directly, avoiding the dependency graph
+    pub selects:      Option<Vec<ReverseDependency<'a>>>,
+
+    // This signifies a feature can provided to the implied option
+    pub implies:      Option<Vec<ReverseDependency<'a>>>,
+
+    // This gives a list of defaults to use, with optional condition
+    pub defaults:     Option<Vec<Dependency<'a>>>,
 
     // This is shorthand for `bool` type, then parses a `defaults`
     // as of v6.3.1, there are no options that declare def_bool more than once
@@ -60,13 +75,13 @@ impl<'a> KOption<'a> {
         let mut opt_prompt_from_type = None;
         let mut help = None;
 
-        let mut prompts      = vec![];
-        let mut ranges       = vec![];
-        let mut depends      = vec![];
-        let mut selects      = vec![];
-        let mut implies      = vec![];
-        let mut defaults     = vec![];
-        let mut def_bool     = vec![];
+        let mut prompts  = vec![];
+        let mut ranges   = vec![];
+        let mut depends  = vec![];
+        let mut selects  = vec![];
+        let mut implies  = vec![];
+        let mut defaults = vec![];
+        let mut def_bool = vec![];
         let mut def_tristate = vec![];
 
         let type_line_parser = tuple((
@@ -81,7 +96,7 @@ impl<'a> KOption<'a> {
                 space1,
             )),
             tuple((
-                take_name,
+                Symbol::parse,
                 many1(alt((
                     map(take_comment,      |_| {}),
                     map(take_line_ending,  |_| {}),
@@ -118,6 +133,10 @@ impl<'a> KOption<'a> {
             }
         };
 
+        // NOTE: I would actually like to `prompts.push(prompt)` from within the blocks above,
+        //       however this leads to an issue where multiple closures are capturing the `prompts`
+        //       variables and im just not sure how to deal with that. Ultimately, if more than one
+        //       prompt is encountered we are going to throw a validation warning anyway.
         if let Some(prompt) = opt_prompt_from_type {
             prompts.push(prompt);
         }

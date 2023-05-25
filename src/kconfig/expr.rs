@@ -1,9 +1,11 @@
-use super::util::{
-    parse_kstring,
-    special_space,
-    take_hex,
-    take_name,
-    take_signed_int,
+use super::{
+    Symbol,
+    util::{
+        parse_kstring,
+        special_space,
+        take_hex,
+        take_signed_int,
+    },
 };
 
 use nom::{
@@ -27,8 +29,16 @@ use nom::{
 };
 
 #[derive(Debug, PartialEq)]
+pub enum VarType<'a> {
+    Hex(u128),
+    Int(i128),
+    Str(&'a str),
+    Symbol(Symbol<'a>),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
-    Var(&'a str),
+    Var(VarType<'a>),
     Not(Box<Expr<'a>>),
     And(Box<Expr<'a>>, Box<Expr<'a>>),
     Or(Box<Expr<'a>>, Box<Expr<'a>>),
@@ -54,7 +64,7 @@ fn take_parens(input: &str) -> IResult<&str, &str> {
     Ok((input, ret))
 }
 
-fn take_operation(input: &str) -> IResult<&str, &str> {
+fn take_operation(input: &str) -> IResult<&str, VarType> {
     preceded(
         tuple((
             special_space,
@@ -69,10 +79,10 @@ fn take_operation(input: &str) -> IResult<&str, &str> {
             special_space,
         )),
         alt((
-            take_hex,        // opttype: `hex`
-            take_signed_int, // opttype: `int`
-            parse_kstring,
-            take_name, // TODO: This should take a kstring, hex, or bool...
+            map(take_hex,        |_| VarType::Hex(0)),
+            map(take_signed_int, |_| VarType::Int(0)),
+            map(parse_kstring,   |v| VarType::Str(v)),
+            map(Symbol::parse,   |v| VarType::Symbol(v)),
         )),
     )(input)
 }
@@ -93,7 +103,7 @@ fn var(input: &str) -> IResult<&str, Expr> {
         recognize(
             tuple((
                 alt((
-                    take_name,
+                    recognize(Symbol::parse),
                     take_hex,        // opttype: `hex`
                     take_signed_int, // opttype: `int`
                     take_parens,
@@ -101,11 +111,11 @@ fn var(input: &str) -> IResult<&str, Expr> {
                 )),
                 opt(alt((
                     take_state,
-                    take_operation,
+                    recognize(take_operation),
                 ))),
             ))
         ),
-        |var_name: &str| Expr::Var(var_name),
+        |var_name: &str| Expr::Var(VarType::Str(var_name)),
     )(input)
 }
 

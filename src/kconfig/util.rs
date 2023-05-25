@@ -77,6 +77,27 @@ impl std::fmt::Display for OptionType {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Symbol<'a> {
+    pub name: &'a str,
+}
+
+impl<'a> Symbol<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, name) = take_while1(is_config_name)(input)?;
+        Ok((input, Self{
+            name,
+        }))
+    }
+}
+
+impl std::fmt::Display for Symbol<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct Expression<'a> {
     pub val: &'a str,  // NOTE: transition hack before we switch to expr::Expr
@@ -206,7 +227,7 @@ impl std::fmt::Display for Dependency<'_> {
 
 #[derive(Debug)]
 pub struct ReverseDependency<'a> {
-    pub symbol:    &'a str,
+    pub symbol:    Symbol<'a>,
     pub condition: Option<Condition<'a>>,
 }
 
@@ -220,7 +241,7 @@ impl<'a> ReverseDependency<'a> {
                     space1,
                 )),
                 tuple((
-                    take_name,
+                    Symbol::parse,
                     opt(Condition::parse),
                 )),
             )(input)?;
@@ -263,7 +284,7 @@ impl<'a> Range<'a> {
                     alt((
                         tuple((take_signed_int, space1, take_signed_int)),
                         tuple((take_hex,        space1, take_hex)),
-                        tuple((take_name,       space1, take_name)),
+                        tuple((recognize(Symbol::parse),   space1, recognize(Symbol::parse))),
                     )),
                     opt(Condition::parse),
                 )),
@@ -377,33 +398,29 @@ fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
     }
 }
 
-pub fn is_hex(chr: u8) -> bool {
+fn is_hex(chr: u8) -> bool {
     // matches ASCII digits A-Fa-f0-9
     (chr >= 0x41 && chr <= 0x46) || (chr >= 0x61 && chr <= 0x66) || (chr >= 0x30 && chr <= 0x39)
 }
 
-pub fn is_digit(chr: u8) -> bool {
+fn is_digit(chr: u8) -> bool {
     // matches ASCII digits 0-9
     chr >= 0x30 && chr <= 0x39
 }
 
-pub fn is_uppercase(chr: u8) -> bool {
+fn is_uppercase(chr: u8) -> bool {
     // matches ASCII uppercase letters A-Z
     chr >= 0x41 && chr <= 0x5A
 }
 
-pub fn is_lowercase(chr: u8) -> bool {
+fn is_lowercase(chr: u8) -> bool {
     // matches ASCII lowercase letters a-z
     chr >= 0x61 && chr <= 0x7A
 }
 
 // TODO: Fixup this function to match only uppercase followed by all of these matches
-pub fn is_config_name(c: char) -> bool {
+fn is_config_name(c: char) -> bool {
     is_uppercase(c as u8) || is_digit(c as u8) || c == '_' || is_lowercase(c as u8)
-}
-
-pub fn take_name(input: &str) -> IResult<&str, &str> {
-    take_while1(is_config_name)(input)
 }
 
 pub fn parse_kstring(input: &str) -> IResult<&str, &str> {
