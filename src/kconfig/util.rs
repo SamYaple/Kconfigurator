@@ -64,19 +64,6 @@ impl OptionType {
     }
 }
 
-
-impl std::fmt::Display for OptionType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OptionType::Tristate => write!(f, "tristate"),
-            OptionType::Bool     => write!(f, "bool"),
-            OptionType::Hex      => write!(f, "hex"),
-            OptionType::Int      => write!(f, "int"),
-            OptionType::Str      => write!(f, "str"),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct Symbol<'a> {
     pub name: &'a str,
@@ -91,13 +78,6 @@ impl<'a> Symbol<'a> {
     }
 }
 
-impl std::fmt::Display for Symbol<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)?;
-        Ok(())
-    }
-}
-
 #[derive(Debug)]
 pub struct Expression<'a> {
     pub val: &'a str,  // NOTE: transition hack before we switch to expr::Expr
@@ -109,13 +89,6 @@ impl<'a> Expression<'a> {
         Ok((input, Self{
             val: e,
         }))
-    }
-}
-
-impl std::fmt::Display for Expression<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.val)?;
-        Ok(())
     }
 }
 
@@ -137,13 +110,6 @@ impl<'a> Condition<'a> {
         Ok((input, Self{
             expression: Expression{ val: c },
         }))
-    }
-}
-
-impl std::fmt::Display for Condition<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "if {}", self.expression)?;
-        Ok(())
     }
 }
 
@@ -176,16 +142,6 @@ impl<'a> Prompt<'a> {
     }
 }
 
-impl std::fmt::Display for Prompt<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.text)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug)]
 pub struct Dependency<'a> {
     pub expression: Expression<'a>,
@@ -215,16 +171,6 @@ impl<'a> Dependency<'a> {
     }
 }
 
-impl std::fmt::Display for Dependency<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.expression)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug)]
 pub struct ReverseDependency<'a> {
     pub symbol:    Symbol<'a>,
@@ -251,16 +197,6 @@ impl<'a> ReverseDependency<'a> {
                 condition,
             }))
         }
-    }
-}
-
-impl std::fmt::Display for ReverseDependency<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.symbol)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
     }
 }
 
@@ -295,16 +231,6 @@ impl<'a> Range<'a> {
                 condition,
             }))
         }
-    }
-}
-
-impl std::fmt::Display for Range<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.start, self.end)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
     }
 }
 
@@ -346,15 +272,6 @@ impl<'a> Help<'a> {
                 text,
             }))
         }
-    }
-}
-
-impl std::fmt::Display for Help<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for line in &self.text {
-            write!(f, "  {}", line)?;
-        }
-        Ok(())
     }
 }
 

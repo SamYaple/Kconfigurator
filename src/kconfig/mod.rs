@@ -5,6 +5,7 @@ mod kmenu;
 mod koption;
 mod expr;
 mod util;
+mod display;
 
 pub use kchoice::KChoice;
 pub use kcommentblock::KCommentBlock;

@@ -27,19 +27,6 @@ pub struct KCommentBlock<'a> {
     pub depends: Option<Vec<Dependency<'a>>>,
 }
 
-impl std::fmt::Display for KCommentBlock<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: make sure prompt gets wrapped in quotes without hardcode
-        writeln!(f, "comment {}", self.prompt)?;
-        if let Some(depends) = &self.depends {
-            for dep in depends {
-                writeln!(f, "\t{}", dep)?;
-            }
-        }
-        Ok(())
-    }
-}
-
 impl<'a> KCommentBlock<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
         let mut depends = vec![];
