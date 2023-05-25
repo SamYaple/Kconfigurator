@@ -172,35 +172,6 @@ impl<'a> Dependency<'a> {
 }
 
 #[derive(Debug)]
-pub struct ReverseDependency<'a> {
-    pub symbol:    Symbol<'a>,
-    pub condition: Option<Condition<'a>>,
-}
-
-impl<'a> ReverseDependency<'a> {
-    pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, ReverseDependency> + '_ {
-        move |input: &str| -> IResult<&str, Self> {
-            let (input, (symbol, condition)) = preceded(
-                tuple((
-                    space0,
-                    tag(str_match),
-                    space1,
-                )),
-                tuple((
-                    Symbol::parse,
-                    opt(Condition::parse),
-                )),
-            )(input)?;
-
-            Ok((input, Self {
-                symbol,
-                condition,
-            }))
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct Range<'a> {
     pub start:     &'a str,
     pub end:       &'a str,

@@ -13,7 +13,6 @@ use super::{
     Condition,
     Prompt,
     Dependency,
-    ReverseDependency,
     Range,
     Help,
 };
@@ -64,16 +63,6 @@ impl Display for Prompt<'_> {
 impl Display for Dependency<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.expression)?;
-        if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
-        }
-        Ok(())
-    }
-}
-
-impl Display for ReverseDependency<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.symbol)?;
         if let Some(condition) = &self.condition {
             write!(f, " {}", condition)?;
         }

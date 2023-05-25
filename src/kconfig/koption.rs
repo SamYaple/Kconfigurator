@@ -1,7 +1,6 @@
 use super::{
     OptionType,
     Dependency,
-    ReverseDependency,
     Range,
     Help,
     Prompt,
@@ -49,10 +48,10 @@ pub struct KOption<'a> {
     pub depends:      Option<Vec<Dependency<'a>>>,
 
     // These select options directly, avoiding the dependency graph
-    pub selects:      Option<Vec<ReverseDependency<'a>>>,
+    pub selects:      Option<Vec<Dependency<'a>>>,
 
     // This signifies a feature can provided to the implied option
-    pub implies:      Option<Vec<ReverseDependency<'a>>>,
+    pub implies:      Option<Vec<Dependency<'a>>>,
 
     // This gives a list of defaults to use, with optional condition
     pub defaults:     Option<Vec<Dependency<'a>>>,
@@ -104,16 +103,16 @@ impl<'a> KOption<'a> {
                         opt_option_type = Some(opttype);
                         opt_prompt_from_type = opt_prompt;
                     }),
-                    map(Dependency::parse("def_bool"),      |v| def_bool.push(v)),
-                    map(Dependency::parse("def_tristate"),  |v| def_tristate.push(v)),
-                    map(Dependency::parse("default"),       |v| defaults.push(v)),
-                    map(Dependency::parse("depends on"),    |v| depends.push(v)),
-                    map(ReverseDependency::parse("select"), |v| selects.push(v)),
-                    map(ReverseDependency::parse("imply"),  |v| implies.push(v)),
-                    map(Range::parse("range"),              |v| ranges.push(v)),
-                    map(Help::parse("help"),                |v| help = Some(v)),
-                    map(Prompt::parse("prompt"),            |v| prompts.push(v)),
-                    map(tuple((space1, tag("modules"))), |_| {}), // NOTE: only shows up once in MODULES option
+                    map(Dependency::parse("def_tristate"), |v| def_tristate.push(v)),
+                    map(Dependency::parse("depends on"),   |v| depends.push(v)),
+                    map(Dependency::parse("def_bool"),     |v| def_bool.push(v)),
+                    map(Dependency::parse("default"),      |v| defaults.push(v)),
+                    map(Dependency::parse("select"),       |v| selects.push(v)),
+                    map(Dependency::parse("imply"),        |v| implies.push(v)),
+                    map(Prompt::parse("prompt"),           |v| prompts.push(v)),
+                    map(Range::parse("range"),             |v| ranges.push(v)),
+                    map(Help::parse("help"),               |v| help = Some(v)),
+                    map(tuple((space1, tag("modules"))),   |_| {}), // NOTE: only shows up once in MODULES option
                 ))),
             )),
         )(input)?;
