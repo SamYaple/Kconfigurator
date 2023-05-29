@@ -1,10 +1,10 @@
 use super::{
     Symbol,
+    Hex,
+    Int,
     util::{
         parse_kstring,
         special_space,
-        take_hex,
-        take_signed_int,
     },
 };
 
@@ -30,8 +30,8 @@ use nom::{
 
 #[derive(Debug, PartialEq)]
 pub enum VarType<'a> {
-    Hex(u128),
-    Int(i128),
+    Hex(Hex),
+    Int(Int),
     Str(&'a str),
     Symbol(Symbol<'a>),
 }
@@ -79,10 +79,10 @@ fn take_operation(input: &str) -> IResult<&str, VarType> {
             special_space,
         )),
         alt((
-            map(take_hex,        |_| VarType::Hex(0)),
-            map(take_signed_int, |_| VarType::Int(0)),
-            map(parse_kstring,   |v| VarType::Str(v)),
-            map(Symbol::parse,   |v| VarType::Symbol(v)),
+            map(Hex::parse,    |v| VarType::Hex(v)),
+            map(Int::parse,    |v| VarType::Int(v)),
+            map(parse_kstring, |v| VarType::Str(v)),
+            map(Symbol::parse, |v| VarType::Symbol(v)),
         )),
     )(input)
 }
@@ -104,8 +104,8 @@ fn var(input: &str) -> IResult<&str, Expr> {
             tuple((
                 alt((
                     recognize(Symbol::parse),
-                    take_hex,        // opttype: `hex`
-                    take_signed_int, // opttype: `int`
+                    recognize(Hex::parse),
+                    recognize(Int::parse),
                     take_parens,
                     parse_kstring,
                 )),

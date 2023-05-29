@@ -16,9 +16,12 @@ pub use util::{
     Condition,
     Expression,
     Range,
+    RangeType,
     Dependency,
     OptionType,
     Help,
     Prompt,
     Symbol,
+    Hex,
+    Int,
 };

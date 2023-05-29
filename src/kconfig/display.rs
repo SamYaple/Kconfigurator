@@ -14,7 +14,10 @@ use super::{
     Prompt,
     Dependency,
     Range,
+    RangeType,
     Help,
+    Int,
+    Hex,
 };
 
 impl Display for OptionType {
@@ -65,6 +68,31 @@ impl Display for Dependency<'_> {
         write!(f, "{}", self.expression)?;
         if let Some(condition) = &self.condition {
             write!(f, " {}", condition)?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for Int {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.val)?;
+        Ok(())
+    }
+}
+
+impl Display for Hex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.val)?;
+        Ok(())
+    }
+}
+
+impl Display for RangeType<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            RangeType::Int(v)    => write!(f, "{}", v)?,
+            RangeType::Hex(v)    => write!(f, "{}", v)?,
+            RangeType::Symbol(v) => write!(f, "{}", v)?,
         }
         Ok(())
     }

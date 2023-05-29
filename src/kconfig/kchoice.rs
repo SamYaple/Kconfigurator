@@ -7,7 +7,6 @@ use super::{
     Prompt,
     util::{
         take_comment,
-        take_optional,
         take_line_ending,
     },
 };
@@ -64,7 +63,7 @@ impl<'a> KChoice<'a> {
             many1(alt((
                 map(take_line_ending,                |_| {}),
                 map(take_comment,                    |_| {}),
-                map(take_optional,                   |_| optional = true),
+                map(tuple((space0, tag("optional"))), |_| optional = true),
                 map(Help::parse("help"),             |v| help = Some(v)),
                 map(KOption::parse,                  |v| options.push(v)),
                 map(KCommentBlock::parse,            |_| {}), // TODO: something useful with these?

@@ -8,6 +8,7 @@ use super::{
 use nom::{
     branch::alt,
     bytes::complete::{
+        is_a,
         tag,
         take,
         take_until,
@@ -170,16 +171,23 @@ impl<'a> Dependency<'a> {
 }
 
 #[derive(Debug)]
+pub enum RangeType<'a> {
+    Int(Int),
+    Hex(Hex),
+    Symbol(Symbol<'a>),
+}
+
+#[derive(Debug)]
 pub struct Range<'a> {
-    pub start:     &'a str,
-    pub end:       &'a str,
+    pub start: RangeType<'a>,
+    pub end:   RangeType<'a>,
     pub condition: Option<Condition<'a>>,
 }
 
 impl<'a> Range<'a> {
     pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, Range<'a>> + '_ {
         move |input: &str| -> IResult<&str, Self> {
-            let (input, ((start, _, end), condition)) = preceded(
+            let (input, ((start, end), condition)) = preceded(
                 tuple((
                     space0,
                     tag(str_match),
@@ -187,9 +195,9 @@ impl<'a> Range<'a> {
                 )),
                 tuple((
                     alt((
-                        tuple((take_signed_int, space1, take_signed_int)),
-                        tuple((take_hex,        space1, take_hex)),
-                        tuple((recognize(Symbol::parse),   space1, recognize(Symbol::parse))),
+                        map(tuple((Hex::parse,    space1, Hex::parse)),    |(start, _, end)| (RangeType::Hex(start),    RangeType::Hex(end))    ),
+                        map(tuple((Int::parse,    space1, Int::parse)),    |(start, _, end)| (RangeType::Int(start),    RangeType::Int(end))    ),
+                        map(tuple((Symbol::parse, space1, Symbol::parse)), |(start, _, end)| (RangeType::Symbol(start), RangeType::Symbol(end)) ),
                     )),
                     opt(Condition::parse),
                 )),
@@ -284,11 +292,6 @@ fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
     }
 }
 
-fn is_hex(chr: u8) -> bool {
-    // matches ASCII digits A-Fa-f0-9
-    (chr >= 0x41 && chr <= 0x46) || (chr >= 0x61 && chr <= 0x66) || (chr >= 0x30 && chr <= 0x39)
-}
-
 fn is_digit(chr: u8) -> bool {
     // matches ASCII digits 0-9
     chr >= 0x30 && chr <= 0x39
@@ -349,10 +352,6 @@ pub fn special_space(input: &str) -> IResult<&str, &str> {
     ))))(input)
 }
 
-pub fn take_optional(input: &str) -> IResult<&str, bool> {
-    map(tuple((space0, tag("optional"))), |_| true)(input)
-}
-
 pub fn take_comment(input: &str) -> IResult<&str, &str> {
     let (input, _) = space0(input)?;
     recognize(tuple((tag("#"), take_until("\n"))))(input)
@@ -399,16 +398,59 @@ pub fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
     )(input)
 }
 
-pub fn take_signed_int(input: &str) -> IResult<&str, &str> {
-    recognize(tuple((
-        opt(tag("-")),
-        take_while1(|c| is_digit(c as u8)),
-    )))(input)
+#[derive(Debug, PartialEq)]
+pub struct Int {
+    pub val: i128,
 }
 
-pub fn take_hex(input: &str) -> IResult<&str, &str> {
-    recognize(tuple((
-        tag("0x"),
-        take_while1(|c| is_hex(c as u8)),
-    )))(input)
+impl Int {
+    pub fn parse(input: &str) -> IResult<&str, Self> {
+        let (input, int) = recognize(tuple((
+            opt(tag("-")),
+            is_a("0123456789"),
+        )))(input)?;
+
+        match int.parse::<i128>() {
+            Ok(val) => Ok((input, Self {
+                val,
+            })),
+            Err(_)  => Err(nom::Err::Error(
+                nom::error::Error::new(input, nom::error::ErrorKind::TooLarge)
+            )),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Hex {
+    pub val: u128,
+}
+
+impl Hex {
+    pub fn parse(input: &str) -> IResult<&str, Self> {
+        let (input, hex) = preceded(tag("0x"), is_a("0123456789abcdefABCDEF"))(input)?;
+
+        // Trim leading 0's as they will not affect our returned answer
+        let hex = hex.trim_start_matches("0");
+
+        // A length greater than 32 would overflow a u128
+        if hex.len() > 32 {
+            return Err(nom::Err::Error(
+                nom::error::Error::new(input, nom::error::ErrorKind::TooLarge)
+            ));
+        }
+
+        let val = hex.as_bytes()
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(idx, &v)| {
+                ((v as char).to_digit(16).unwrap_or(0) as u128) << (idx * 4)
+            })
+            .sum();
+
+        Ok((input, Self {
+            val,
+        }))
+    }
 }
