@@ -1,7 +1,6 @@
 use super::{
     KConfig,
     expr::{
-        Expr,
         parse_expr,
     }
 };
@@ -17,7 +16,6 @@ use nom::{
     character::complete::{
         anychar,
         line_ending,
-        multispace1,
         satisfy,
         space0,
         space1,
@@ -55,11 +53,11 @@ impl OptionType {
     pub fn parse(input: &str) -> IResult<&str, OptionType> {
         let (input, _) = space0(input)?;
         alt((
+            map(tag("tristate"), |_| OptionType::Tristate),
             map(tag("bool"),     |_| OptionType::Bool),
             map(tag("hex"),      |_| OptionType::Hex),
             map(tag("int"),      |_| OptionType::Int),
             map(tag("string"),   |_| OptionType::Str),
-            map(tag("tristate"), |_| OptionType::Tristate),
         ))(input)
     }
 }
@@ -85,7 +83,7 @@ pub struct Expression<'a> {
 
 impl<'a> Expression<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, e) = recognize(take_expr)(input)?;
+        let (input, e) = recognize(parse_expr)(input)?;
         Ok((input, Self{
             val: e,
         }))
@@ -105,7 +103,7 @@ impl<'a> Condition<'a> {
                 tag("if"),
                 special_space,
             )),
-            recognize(take_expr)
+            recognize(parse_expr)
         )(input)?;
         Ok((input, Self{
             expression: Expression{ val: c },
@@ -344,44 +342,6 @@ pub fn take_line_ending(input: &str) -> IResult<&str, &str> {
     recognize(many1(tuple((space0, line_ending))))(input)
 }
 
-pub fn take_tagged_line<'a>(input: &'a str, str_match: &str) -> IResult<&'a str, &'a str> {
-    let (input, _) = tuple((space0, tag(str_match), space1))(input)?;
-    take_continued_line(input)
-}
-
-pub fn take_mainmenu(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "mainmenu")
-}
-
-pub fn take_source_kconfig(input: &str) -> IResult<&str, &str> {
-    take_tagged_line(input, "source")
-}
-
-pub fn take_visible(input: &str) -> IResult<&str, &str> {
-    let (input, _) = tuple((
-        space0,
-        tag("visible if"),
-        space1,
-    ))(input)?;
-    let (input, cond) = recognize(take_expr)(input)?;
-    Ok((input, cond))
-}
-
-pub fn take_expr(input: &str) -> IResult<&str, Expr> {
-    parse_expr(input)
-}
-
-pub fn take_cond(input: &str) -> IResult<&str, &str> {
-    preceded(
-        tuple((
-            special_space,
-            tag("if"),
-            special_space,
-        )),
-        recognize(take_expr)
-    )(input)
-}
-
 pub fn special_space(input: &str) -> IResult<&str, &str> {
     recognize(many0(alt((
         space1,
@@ -422,11 +382,21 @@ pub fn take_continued_line(input: &str) -> IResult<&str, &str> {
 }
 
 pub fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
-    let (input, condition) = take_cond(input)?;
-    let (input, _) = multispace1(input)?;
-    let (input, config) = KConfig::parse(input)?;
-    let (input, _) = tag("endif")(input)?;
-    Ok((input, (condition, config)))
+    delimited(
+        tuple((
+            space0,
+            tag("if"),
+            space1,
+        )),
+        tuple((
+            recognize(parse_expr),
+            KConfig::parse,
+        )),
+        tuple((
+            space0,
+            tag("endif"),
+        )),
+    )(input)
 }
 
 pub fn take_signed_int(input: &str) -> IResult<&str, &str> {

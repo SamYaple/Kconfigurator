@@ -24,11 +24,12 @@ fn main() {
         let opts = config.collect_options();
         if !opts.is_empty() {
             for opt in opts {
-                if let Some(prompts) = &opt.prompts {
-                    if prompts.len() > 1 {
-                        println!("{}", opt);
-                    }
-                }
+                println!("{}", opt);
+                //if let Some(prompts) = &opt.prompts {
+                //    if prompts.len() > 1 {
+                //        println!("{}", opt);
+                //    }
+                //}
             }
         }
     }

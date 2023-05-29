@@ -3,12 +3,11 @@ use super::{
     KCommentBlock,
     KMenu,
     KOption,
+    Prompt,
     util::{
         take_block,
         take_comment,
         take_line_ending,
-        take_mainmenu,
-        take_source_kconfig,
     },
 };
 
@@ -21,10 +20,10 @@ use nom::{
 
 #[derive(Debug)]
 pub struct KConfig<'a> {
-    pub mainmenu: Option<&'a str>,
+    pub mainmenu: Option<Prompt<'a>>,
     pub blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
     pub choices:  Option<Vec<KChoice<'a>>>,
-    pub configs:  Option<Vec<&'a str>>,
+    pub configs:  Option<Vec<Prompt<'a>>>,
     pub menus:    Option<Vec<KMenu<'a>>>,
     pub options:  Option<Vec<KOption<'a>>>,
 }
@@ -42,8 +41,8 @@ impl<'a> KConfig<'a> {
             map(take_line_ending,     |_| {}),
             map(take_comment,         |_| {}),
             map(take_block,           |v| blocks.push(v)),
-            map(take_source_kconfig,  |v| configs.push(v)),
-            map(take_mainmenu,        |v| mainmenu = Some(v)),
+            map(Prompt::parse("source"),   |v| configs.push(v)),
+            map(Prompt::parse("mainmenu"), |v| mainmenu = Some(v)),
             map(KOption::parse,       |v| options.push(v)),
             map(KMenu::parse,         |v| menus.push(v)),
             map(KChoice::parse,       |v| choices.push(v)),

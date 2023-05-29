@@ -4,13 +4,12 @@ use super::{
     KConfig,
     KOption,
     Dependency,
+    Prompt,
     util::{
         take_block,
         take_comment,
         take_continued_line,
         take_line_ending,
-        take_source_kconfig,
-        take_visible,
     },
 };
 
@@ -33,11 +32,11 @@ pub struct KMenu<'a> {
     pub description: &'a str,
     pub blocks:  Option<Vec<(&'a str, KConfig<'a>)>>,
     pub choices: Option<Vec<KChoice<'a>>>,
-    pub configs: Option<Vec<&'a str>>,
+    pub configs: Option<Vec<Prompt<'a>>>,
     pub depends: Option<Vec<Dependency<'a>>>,
     pub menus:   Option<Vec<KMenu<'a>>>,
     pub options: Option<Vec<KOption<'a>>>,
-    pub visible: Option<Vec<&'a str>>,
+    pub visible: Option<Vec<Dependency<'a>>>,
 }
 
 impl<'a> KMenu<'a> {
@@ -65,9 +64,9 @@ impl<'a> KMenu<'a> {
                     map(KChoice::parse,       |v| choices.push(v)),
                     map(KMenu::parse,         |v| menus.push(v)),
                     map(KOption::parse,       |v| options.push(v)),
-                    map(take_visible,         |v| visible.push(v)),
+                    map(Dependency::parse("visible if"), |v| visible.push(v)),
                     map(Dependency::parse("depends on"), |v| depends.push(v)),
-                    map(take_source_kconfig,  |v| configs.push(v)),
+                    map(Prompt::parse("source"),         |v| configs.push(v)),
                     map(KCommentBlock::parse, |_| {}), // TODO: something useful with these?
                 ))),
             )),
