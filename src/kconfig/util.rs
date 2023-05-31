@@ -37,6 +37,7 @@ use nom::{
         preceded,
         tuple,
         delimited,
+        terminated,
     },
     IResult,
 };
@@ -380,22 +381,29 @@ pub fn take_continued_line(input: &str) -> IResult<&str, &str> {
     )))(input)
 }
 
-pub fn take_block(input: &str) -> IResult<&str, (&str, KConfig)> {
-    delimited(
-        tuple((
-            space0,
-            tag("if"),
-            space1,
-        )),
-        tuple((
-            recognize(parse_expr),
-            KConfig::parse,
-        )),
-        tuple((
-            space0,
-            tag("endif"),
-        )),
-    )(input)
+#[derive(Debug)]
+pub struct Block<'a> {
+    pub config:    KConfig<'a>,
+    pub condition: Condition<'a>,
+}
+
+impl<'a> Block<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, (condition, config)) = terminated(
+            tuple((
+                Condition::parse,
+                KConfig::parse,
+            )),
+            tuple((
+                space0,
+                tag("endif"),
+            )),
+        )(input)?;
+        Ok((input, Self {
+            config,
+            condition,
+        }))
+    }
 }
 
 #[derive(Debug, PartialEq)]

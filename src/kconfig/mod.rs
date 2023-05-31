@@ -24,4 +24,5 @@ pub use util::{
     Symbol,
     Hex,
     Int,
+    Block,
 };

@@ -4,8 +4,8 @@ use super::{
     KMenu,
     KOption,
     Prompt,
+    Block,
     util::{
-        take_block,
         take_comment,
         take_line_ending,
     },
@@ -21,7 +21,7 @@ use nom::{
 #[derive(Debug)]
 pub struct KConfig<'a> {
     pub mainmenu: Option<Prompt<'a>>,
-    pub blocks:   Option<Vec<(&'a str, KConfig<'a>)>>,
+    pub blocks:   Option<Vec<Block<'a>>>,
     pub choices:  Option<Vec<KChoice<'a>>>,
     pub configs:  Option<Vec<Prompt<'a>>>,
     pub menus:    Option<Vec<KMenu<'a>>>,
@@ -40,7 +40,7 @@ impl<'a> KConfig<'a> {
         let (input, _) = many0(alt((
             map(take_line_ending,     |_| {}),
             map(take_comment,         |_| {}),
-            map(take_block,           |v| blocks.push(v)),
+            map(Block::parse,         |v| blocks.push(v)),
             map(Prompt::parse("source"),   |v| configs.push(v)),
             map(Prompt::parse("mainmenu"), |v| mainmenu = Some(v)),
             map(KOption::parse,       |v| options.push(v)),
@@ -72,8 +72,8 @@ impl<'a> KConfig<'a> {
         }
 
         if let Some(blocks) = &self.blocks {
-            for (_cond, block) in blocks {
-                options.extend(block.collect_options());
+            for block in blocks {
+                options.extend(block.config.collect_options());
             }
         }
 
