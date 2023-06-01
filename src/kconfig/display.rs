@@ -147,13 +147,13 @@ impl Display for KCommentBlock<'_> {
 impl Display for KOption<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "config {}", self.name)?;
-        writeln!(f, "\t{}", self.option_type)?;
 
-        if let Some(prompts) = &self.prompts {
-            for prompt in prompts {
-                writeln!(f, "\tprompt {}", prompt)?;
-            }
+        write!(f, "\t{}", self.option_type)?;
+        if let Some(prompt) = &self.prompt {
+            write!(f, " {}", prompt)?;
         }
+        writeln!(f)?;
+
         if let Some(defaults) = &self.defaults {
             for def in defaults {
                 writeln!(f, "\tdefaults {}", def)?;

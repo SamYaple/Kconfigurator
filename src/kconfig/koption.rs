@@ -41,8 +41,8 @@ pub struct KOption<'a> {
     // Raw help text, with leading whitespace on each line
     pub help:         Option<Help<'a>>,
 
-    // prompt exists as its own key
-    pub prompts:      Option<Vec<Prompt<'a>>>,
+    // prompt can exist as its own key, or on the same line as the `OptionType`
+    pub prompt:       Option<Prompt<'a>>,
 
     // These are strong dependencies
     pub depends:      Option<Vec<Dependency<'a>>>,
@@ -73,8 +73,8 @@ impl<'a> KOption<'a> {
         let mut opt_option_type = None;
         let mut opt_prompt_from_type = None;
         let mut help = None;
+        let mut prompt = None;
 
-        let mut prompts  = vec![];
         let mut ranges   = vec![];
         let mut depends  = vec![];
         let mut selects  = vec![];
@@ -109,7 +109,7 @@ impl<'a> KOption<'a> {
                     map(Dependency::parse("default"),      |v| defaults.push(v)),
                     map(Dependency::parse("select"),       |v| selects.push(v)),
                     map(Dependency::parse("imply"),        |v| implies.push(v)),
-                    map(Prompt::parse("prompt"),           |v| prompts.push(v)),
+                    map(Prompt::parse("prompt"),           |v| prompt = Some(v)),
                     map(Range::parse("range"),             |v| ranges.push(v)),
                     map(Help::parse("help"),               |v| help = Some(v)),
                     map(tuple((space1, tag("modules"))),   |_| {}), // NOTE: only shows up once in MODULES option
@@ -136,8 +136,12 @@ impl<'a> KOption<'a> {
         //       however this leads to an issue where multiple closures are capturing the `prompts`
         //       variables and im just not sure how to deal with that. Ultimately, if more than one
         //       prompt is encountered we are going to throw a validation warning anyway.
-        if let Some(prompt) = opt_prompt_from_type {
-            prompts.push(prompt);
+        if let Some(p) = opt_prompt_from_type {
+            if prompt.is_some() {
+                // prompt was declared as a seperate key and also in the OptionType line
+                // TODO: This should return a nom parsing error for duplicate keys in the block
+            }
+            prompt = Some(p);
         }
 
         //println!("SAMMAS {}", name);
@@ -145,10 +149,10 @@ impl<'a> KOption<'a> {
                 name,
                 option_type,
                 help,
+                prompt,
                 ranges:       if ranges.is_empty()       { None } else { Some(ranges)       },
                 depends:      if depends.is_empty()      { None } else { Some(depends)      },
                 implies:      if implies.is_empty()      { None } else { Some(implies)      },
-                prompts:      if prompts.is_empty()      { None } else { Some(prompts)      },
                 selects:      if selects.is_empty()      { None } else { Some(selects)      },
                 defaults:     if defaults.is_empty()     { None } else { Some(defaults)     },
                 def_bool:     if def_bool.is_empty()     { None } else { Some(def_bool)     },
