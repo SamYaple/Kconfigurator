@@ -140,6 +140,7 @@ impl<'a> KOption<'a> {
             prompts.push(prompt);
         }
 
+        //println!("SAMMAS {}", name);
         Ok((input, Self{
                 name,
                 option_type,

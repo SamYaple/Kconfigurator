@@ -18,6 +18,8 @@ use super::{
     Help,
     Int,
     Hex,
+    Delimiter,
+    ConstantSymbol,
 };
 
 impl Display for OptionType {
@@ -35,6 +37,18 @@ impl Display for OptionType {
 impl Display for Symbol<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.name)?;
+        Ok(())
+    }
+}
+
+impl Display for ConstantSymbol<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self.delimiter {
+            Delimiter::DoubleQuote(content)       => write!(f, "\"{}\"", content)?,
+            Delimiter::SingleQuote(content)       => write!(f, "'{}'",   content)?,
+            //Delimiter::Parentheses(content)       => write!(f, "({})",   content)?,
+            //Delimiter::DollarParentheses(content) => write!(f, "$({})",  content)?,
+        };
         Ok(())
     }
 }

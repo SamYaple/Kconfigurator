@@ -65,13 +65,78 @@ impl OptionType {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Delimiter<'a> {
+    SingleQuote(&'a str),
+    DoubleQuote(&'a str),
+    //Parentheses(&'a str),
+    //DollarParentheses(&'a str),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ConstantSymbol<'a> {
+    pub delimiter: Delimiter<'a>,
+
+    // Once the string has been processed through macros, it should not be reprocessed.
+    processed:     bool,
+}
+
+impl<'a> ConstantSymbol<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        // Grab the matching delimiter tag, but do not move the input position forward. This allows
+        // for better readability later when we call the `delimited` parser instead of using the
+        // `terminated` parser.
+        // The types being included in the variable names is to provide visibility to anyone
+        // reading this code. For ease of use when parsing, `end_delim` must be a `char`, but the
+        // `begin_delim` is more than one `char` in the case of DollarParantheses. It has been
+        // easiest to simply keep them as different types.
+        let (_, (begin_delim_str, delimiter_type, end_delim_char)) = preceded(space0, alt((
+            map(tag("'"),  |begin_delim| ( begin_delim, Delimiter::SingleQuote(""),       '\'' )),
+            map(tag("\""), |begin_delim| ( begin_delim, Delimiter::DoubleQuote(""),       '"'  )),
+            //map(tag("("),  |begin_delim| ( begin_delim, Delimiter::Parentheses(""),       ')'  )),
+            //map(tag("$("), |begin_delim| ( begin_delim, Delimiter::DollarParentheses(""), ')'  )),
+        )))(input)?;
+
+        // Here we prepare for a custom parser that will match only when it encounters a backslash
+        // that is escaping our `end_delim`. This is primarily encountered in strings which are
+        // escaping quotes, however it also comes up when processing macros
+        let escaped_delim = &*format!("\\{}", end_delim_char);
+
+        let (input, content) = delimited(
+            tag(begin_delim_str),
+            recognize(
+                many0(
+                    alt((
+                        take_while1(|c| c != '\\' && c != end_delim_char),
+                        tag(escaped_delim),
+                        tag("\\"),
+                    )),
+                ),
+            ),
+            nom::character::complete::char(end_delim_char),
+        )(input)?;
+
+        let delimiter = match delimiter_type {
+            Delimiter::SingleQuote(_)       => Delimiter::SingleQuote(content),
+            Delimiter::DoubleQuote(_)       => Delimiter::DoubleQuote(content),
+            //Delimiter::Parentheses(_)       => Delimiter::Parentheses(content),
+            //Delimiter::DollarParentheses(_) => Delimiter::DollarParentheses(content),
+        };
+
+        Ok((input, Self{
+            delimiter,
+            processed: false,
+        }))
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Symbol<'a> {
     pub name: &'a str,
 }
 
 impl<'a> Symbol<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, name) = take_while1(is_config_name)(input)?;
+        let (input, name) = is_a("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")(input)?;
         Ok((input, Self{
             name,
         }))
@@ -115,7 +180,7 @@ impl<'a> Condition<'a> {
 
 #[derive(Debug)]
 pub struct Prompt<'a> {
-    pub text:       &'a str,
+    pub text:       ConstantSymbol<'a>,
     pub condition:  Option<Condition<'a>>,
 }
 
@@ -129,7 +194,7 @@ impl<'a> Prompt<'a> {
                     space0,
                 )),
                 tuple((
-                    parse_kstring,
+                    ConstantSymbol::parse,
                     opt(Condition::parse),
                 )),
             )(input)?;
@@ -291,26 +356,6 @@ fn take_while_help(min_ws: usize) -> impl Fn(&str) -> IResult<&str, &str> {
             Ok((input, line))
         }
     }
-}
-
-fn is_digit(chr: u8) -> bool {
-    // matches ASCII digits 0-9
-    chr >= 0x30 && chr <= 0x39
-}
-
-fn is_uppercase(chr: u8) -> bool {
-    // matches ASCII uppercase letters A-Z
-    chr >= 0x41 && chr <= 0x5A
-}
-
-fn is_lowercase(chr: u8) -> bool {
-    // matches ASCII lowercase letters a-z
-    chr >= 0x61 && chr <= 0x7A
-}
-
-// TODO: Fixup this function to match only uppercase followed by all of these matches
-fn is_config_name(c: char) -> bool {
-    is_uppercase(c as u8) || is_digit(c as u8) || c == '_' || is_lowercase(c as u8)
 }
 
 pub fn parse_kstring(input: &str) -> IResult<&str, &str> {
