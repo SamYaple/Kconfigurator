@@ -1,8 +1,10 @@
-use super::util::{
-    take_comment,
-    take_line_ending,
-    parse_kstring,
+use super::{
+    Prompt,
     Dependency,
+    util::{
+        take_comment,
+        take_line_ending,
+    },
 };
 
 use nom::{
@@ -23,7 +25,7 @@ use nom::{
 
 #[derive(Debug)]
 pub struct KCommentBlock<'a> {
-    pub prompt:  &'a str,
+    pub prompt:  Prompt<'a>,
     pub depends: Option<Vec<Dependency<'a>>>,
 }
 
@@ -38,7 +40,7 @@ impl<'a> KCommentBlock<'a> {
                 space1,
             )),
             tuple((
-                parse_kstring,
+                Prompt::parse(""),
                 many0(alt((
                     map(take_line_ending, |_| {}),
                     map(take_comment,     |_| {}),

@@ -1,9 +1,9 @@
 use super::{
     Symbol,
+    ConstantSymbol,
     Hex,
     Int,
     util::{
-        parse_kstring,
         special_space,
     },
 };
@@ -33,6 +33,7 @@ pub enum VarType<'a> {
     Hex(Hex),
     Int(Int),
     Str(&'a str),
+    ConstantSymbol(ConstantSymbol<'a>),
     Symbol(Symbol<'a>),
 }
 
@@ -79,10 +80,10 @@ fn take_operation(input: &str) -> IResult<&str, VarType> {
             special_space,
         )),
         alt((
-            map(Hex::parse,    |v| VarType::Hex(v)),
-            map(Int::parse,    |v| VarType::Int(v)),
-            map(parse_kstring, |v| VarType::Str(v)),
-            map(Symbol::parse, |v| VarType::Symbol(v)),
+            map(Hex::parse,            |v| VarType::Hex(v)            ),
+            map(Int::parse,            |v| VarType::Int(v)            ),
+            map(Symbol::parse,         |v| VarType::Symbol(v)         ),
+            map(ConstantSymbol::parse, |v| VarType::ConstantSymbol(v) ),
         )),
     )(input)
 }
@@ -107,7 +108,7 @@ fn var(input: &str) -> IResult<&str, Expr> {
                     recognize(Hex::parse),
                     recognize(Int::parse),
                     take_parens,
-                    parse_kstring,
+                    recognize(ConstantSymbol::parse),
                 )),
                 opt(alt((
                     take_state,
