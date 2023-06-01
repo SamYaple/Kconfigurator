@@ -13,7 +13,6 @@ pub use kconfig::KConfig;
 pub use kmenu::KMenu;
 pub use koption::KOption;
 pub use util::{
-    Condition,
     Expression,
     Range,
     RangeType,
@@ -27,4 +26,5 @@ pub use util::{
     Block,
     ConstantSymbol,
     Delimiter,
+    Annotation,
 };

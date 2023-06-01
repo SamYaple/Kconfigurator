@@ -2,7 +2,6 @@ use super::{
     Prompt,
     Dependency,
     util::{
-        take_comment,
         take_line_ending,
     },
 };
@@ -43,7 +42,6 @@ impl<'a> KCommentBlock<'a> {
                 Prompt::parse(""),
                 many0(alt((
                     map(take_line_ending, |_| {}),
-                    map(take_comment,     |_| {}),
                     map(Dependency::parse("depends on"), |v| depends.push(v)),
                 ))),
             )),

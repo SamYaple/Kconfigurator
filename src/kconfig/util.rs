@@ -37,7 +37,6 @@ use nom::{
         preceded,
         tuple,
         delimited,
-        terminated,
     },
     IResult,
 };
@@ -143,6 +142,27 @@ impl<'a> Symbol<'a> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Annotation<'a> {
+    pub text: &'a str,
+}
+
+impl<'a> Annotation<'a> {
+    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
+        let (input, text) = preceded(
+            tuple((
+                space0,
+                tag("#"),
+                space0,
+            )),
+            take_until("\n"),
+        )(input)?;
+        Ok((input, Self{
+            text,
+        }))
+    }
+}
+
 #[derive(Debug)]
 pub struct Expression<'a> {
     pub val: &'a str,  // NOTE: transition hack before we switch to expr::Expr
@@ -158,30 +178,9 @@ impl<'a> Expression<'a> {
 }
 
 #[derive(Debug)]
-pub struct Condition<'a> {
-    pub expression: Expression<'a>,
-}
-
-impl<'a> Condition<'a> {
-    pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, c) = preceded(
-            tuple((
-                special_space,
-                tag("if"),
-                special_space,
-            )),
-            recognize(parse_expr)
-        )(input)?;
-        Ok((input, Self{
-            expression: Expression{ val: c },
-        }))
-    }
-}
-
-#[derive(Debug)]
 pub struct Prompt<'a> {
-    pub text:       ConstantSymbol<'a>,
-    pub condition:  Option<Condition<'a>>,
+    pub text:      ConstantSymbol<'a>,
+    pub condition: Option<Expression<'a>>,
 }
 
 impl<'a> Prompt<'a> {
@@ -195,7 +194,14 @@ impl<'a> Prompt<'a> {
                 )),
                 tuple((
                     ConstantSymbol::parse,
-                    opt(Condition::parse),
+                    opt(preceded(
+                        tuple((
+                            special_space,
+                            tag("if"),
+                            special_space,
+                        )),
+                        Expression::parse,
+                    )),
                 )),
             )(input)?;
 
@@ -210,13 +216,14 @@ impl<'a> Prompt<'a> {
 #[derive(Debug)]
 pub struct Dependency<'a> {
     pub expression: Expression<'a>,
-    pub condition:  Option<Condition<'a>>,
+    pub condition:  Option<Expression<'a>>,
+    pub annotation: Option<Annotation<'a>>,
 }
 
 impl<'a> Dependency<'a> {
     pub fn parse(str_match: &str) -> impl Fn(&'a str) -> IResult<&'a str, Dependency<'a>> + '_ {
         move |input: &str| -> IResult<&str, Self> {
-            let (input, (expression, condition)) = preceded(
+            let (input, (expression, condition, annotation)) = delimited(
                 tuple((
                     space0,
                     tag(str_match),
@@ -224,13 +231,26 @@ impl<'a> Dependency<'a> {
                 )),
                 tuple((
                     Expression::parse,
-                    opt(Condition::parse),
+                    opt(preceded(
+                        tuple((
+                            special_space,
+                            tag("if"),
+                            special_space,
+                        )),
+                        Expression::parse,
+                    )),
+                    opt(Annotation::parse),
+                )),
+                tuple((
+                    space0,
+                    tag("\n"),
                 )),
             )(input)?;
 
             Ok((input, Self {
                 expression,
                 condition,
+                annotation,
             }))
         }
     }
@@ -247,7 +267,7 @@ pub enum RangeType<'a> {
 pub struct Range<'a> {
     pub start: RangeType<'a>,
     pub end:   RangeType<'a>,
-    pub condition: Option<Condition<'a>>,
+    pub condition: Option<Expression<'a>>,
 }
 
 impl<'a> Range<'a> {
@@ -265,7 +285,14 @@ impl<'a> Range<'a> {
                         map(tuple((Int::parse,    space1, Int::parse)),    |(start, _, end)| (RangeType::Int(start),    RangeType::Int(end))    ),
                         map(tuple((Symbol::parse, space1, Symbol::parse)), |(start, _, end)| (RangeType::Symbol(start), RangeType::Symbol(end)) ),
                     )),
-                    opt(Condition::parse),
+                    opt(preceded(
+                        tuple((
+                            special_space,
+                            tag("if"),
+                            special_space,
+                        )),
+                        Expression::parse,
+                    )),
                 )),
             )(input)?;
             Ok((input, Self {
@@ -369,11 +396,6 @@ pub fn special_space(input: &str) -> IResult<&str, &str> {
     ))))(input)
 }
 
-pub fn take_comment(input: &str) -> IResult<&str, &str> {
-    let (input, _) = space0(input)?;
-    recognize(tuple((tag("#"), take_until("\n"))))(input)
-}
-
 pub fn take_continued_line(input: &str) -> IResult<&str, &str> {
     // This parser will take all bytes until it encounters a newline which is not escaped. or a
     // comment
@@ -400,14 +422,19 @@ pub fn take_continued_line(input: &str) -> IResult<&str, &str> {
 #[derive(Debug)]
 pub struct Block<'a> {
     pub config:    KConfig<'a>,
-    pub condition: Condition<'a>,
+    pub condition: Expression<'a>,
 }
 
 impl<'a> Block<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
-        let (input, (condition, config)) = terminated(
+        let (input, (condition, config)) = delimited(
             tuple((
-                Condition::parse,
+                space0,
+                tag("if"),
+                space1,
+            )),
+            tuple((
+                Expression::parse,
                 KConfig::parse,
             )),
             tuple((

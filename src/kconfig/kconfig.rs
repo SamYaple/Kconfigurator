@@ -5,8 +5,8 @@ use super::{
     KOption,
     Prompt,
     Block,
+    Annotation,
     util::{
-        take_comment,
         take_line_ending,
     },
 };
@@ -39,7 +39,7 @@ impl<'a> KConfig<'a> {
 
         let (input, _) = many0(alt((
             map(take_line_ending,     |_| {}),
-            map(take_comment,         |_| {}),
+            map(Annotation::parse,    |_| {}),
             map(Block::parse,         |v| blocks.push(v)),
             map(Prompt::parse("source"),   |v| configs.push(v)),
             map(Prompt::parse("mainmenu"), |v| mainmenu = Some(v)),

@@ -5,8 +5,8 @@ use super::{
     Dependency,
     Help,
     Prompt,
+    Annotation,
     util::{
-        take_comment,
         take_line_ending,
     },
 };
@@ -62,7 +62,7 @@ impl<'a> KChoice<'a> {
             )),
             many1(alt((
                 map(take_line_ending,                |_| {}),
-                map(take_comment,                    |_| {}),
+                map(Annotation::parse,               |_| {}),
                 map(tuple((space0, tag("optional"))), |_| optional = true),
                 map(Help::parse("help"),             |v| help = Some(v)),
                 map(KOption::parse,                  |v| options.push(v)),

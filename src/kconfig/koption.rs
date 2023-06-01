@@ -5,8 +5,8 @@ use super::{
     Help,
     Prompt,
     Symbol,
+    Annotation,
     util::{
-        take_comment,
         take_line_ending,
     },
 };
@@ -97,8 +97,8 @@ impl<'a> KOption<'a> {
             tuple((
                 Symbol::parse,
                 many1(alt((
-                    map(take_comment,      |_| {}),
                     map(take_line_ending,  |_| {}),
+                    map(Annotation::parse, |_| {}),
                     map(type_line_parser,  |(opttype, opt_prompt)| {
                         opt_option_type = Some(opttype);
                         opt_prompt_from_type = opt_prompt;
@@ -144,7 +144,6 @@ impl<'a> KOption<'a> {
             prompt = Some(p);
         }
 
-        //println!("SAMMAS {}", name);
         Ok((input, Self{
                 name,
                 option_type,

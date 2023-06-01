@@ -5,8 +5,8 @@ use super::{
     Dependency,
     Prompt,
     Block,
+    Annotation,
     util::{
-        take_comment,
         take_continued_line,
         take_line_ending,
     },
@@ -58,7 +58,7 @@ impl<'a> KMenu<'a> {
                 take_continued_line,
                 many1(alt((
                     map(take_line_ending,     |_| {}),
-                    map(take_comment,         |_| {}),
+                    map(Annotation::parse,    |_| {}),
                     map(Block::parse,         |v| blocks.push(v)),
                     map(KChoice::parse,       |v| choices.push(v)),
                     map(KMenu::parse,         |v| menus.push(v)),

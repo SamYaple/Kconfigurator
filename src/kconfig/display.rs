@@ -10,7 +10,6 @@ use super::{
     OptionType,
     Symbol,
     Expression,
-    Condition,
     Prompt,
     Dependency,
     Range,
@@ -60,18 +59,11 @@ impl Display for Expression<'_> {
     }
 }
 
-impl Display for Condition<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "if {}", self.expression)?;
-        Ok(())
-    }
-}
-
 impl Display for Prompt<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.text)?;
         if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
+            write!(f, " if {}", condition)?;
         }
         Ok(())
     }
@@ -81,7 +73,7 @@ impl Display for Dependency<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.expression)?;
         if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
+            write!(f, " if {}", condition)?;
         }
         Ok(())
     }
@@ -116,7 +108,7 @@ impl Display for Range<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} {}", self.start, self.end)?;
         if let Some(condition) = &self.condition {
-            write!(f, " {}", condition)?;
+            write!(f, " if {}", condition)?;
         }
         Ok(())
     }
