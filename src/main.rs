@@ -14,25 +14,15 @@ fn main() {
     let dir = &args[1];
     let matches = search(&Path::new(dir));
 
-    // janky yaml output for loading into python...
-    //println!("kconfigs:");
+    let mut opts: usize = 0;
     for path in matches {
-        //print!("  \"{}\":", path.display());
         let content = load_from_file(path.display().to_string());
         let config = take_kconfig(&content);
+        println!("{}", config);
 
-        let opts = config.collect_options();
-        if !opts.is_empty() {
-            for opt in opts {
-                println!("{}", opt);
-                //if let Some(prompts) = &opt.prompts {
-                //    if prompts.len() > 1 {
-                //        println!("{}", opt);
-                //    }
-                //}
-            }
-        }
+        opts = opts + config.collect_options().len();
     }
+    eprintln!("Total options found across all KConfigs in '{}': {}", dir, opts);
 }
 
 fn search(path: &Path) -> Vec<PathBuf> {

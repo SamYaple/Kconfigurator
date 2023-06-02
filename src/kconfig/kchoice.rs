@@ -30,7 +30,7 @@ use nom::{
 #[derive(Debug)]
 pub struct KChoice<'a> {
     pub option_type: OptionType,
-    pub prompts:     Vec<Prompt<'a>>,
+    pub prompt:      Option<Prompt<'a>>,
     pub options:     Vec<KOption<'a>>,
     pub optional:    bool,
     pub defaults:    Option<Vec<Dependency<'a>>>,
@@ -42,12 +42,12 @@ impl<'a> KChoice<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
         let mut opt_option_type = None;
         let mut opt_prompt_from_type = None;
+        let mut prompt   = None;
         let mut help = None;
         let mut optional = false;
         let mut depends  = vec![];
         let mut defaults = vec![];
         let mut options  = vec![];
-        let mut prompts  = vec![];
 
         let type_line_parser = tuple((
             OptionType::parse,
@@ -67,7 +67,7 @@ impl<'a> KChoice<'a> {
                 map(Help::parse("help"),             |v| help = Some(v)),
                 map(KOption::parse,                  |v| options.push(v)),
                 map(KCommentBlock::parse,            |_| {}), // TODO: something useful with these?
-                map(Prompt::parse("prompt"),         |v| prompts.push(v)),
+                map(Prompt::parse("prompt"),         |v| prompt = Some(v)),
                 map(Dependency::parse("default"),    |v| defaults.push(v)),
                 map(Dependency::parse("depends on"), |v| depends.push(v)),
                 map(type_line_parser,  |(opttype, opt_prompt)| {
@@ -105,14 +105,18 @@ impl<'a> KChoice<'a> {
             None => tmptype,
         };
 
-        if let Some(prompt) = opt_prompt_from_type {
-            prompts.push(prompt);
+        if let Some(p) = opt_prompt_from_type {
+            if prompt.is_some() {
+                // prompt was declared as a seperate key and also in the OptionType line
+                // TODO: This should return a nom parsing error for duplicate keys in the block
+            }
+            prompt = Some(p);
         }
 
         Ok((input, Self{
                 option_type,
                 optional,
-                prompts,
+                prompt,
                 defaults: if defaults.is_empty() { None } else { Some(defaults) },
                 depends:  if depends.is_empty()  { None } else { Some(depends)  },
                 help,

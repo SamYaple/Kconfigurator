@@ -6,6 +6,10 @@ use std::fmt::{
 
 use super::{
     KOption,
+    KMenu,
+    Block,
+    KChoice,
+    KConfig,
     KCommentBlock,
     OptionType,
     Symbol,
@@ -20,6 +24,7 @@ use super::{
     Delimiter,
     ConstantSymbol,
 };
+
 
 impl Display for OptionType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -192,6 +197,129 @@ impl Display for KOption<'_> {
                 }
             }
         }
+        Ok(())
+    }
+}
+
+impl Display for KMenu<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        macro_rules! writemacro {
+            ($field:ident) => {
+                if let Some($field) = &self.$field {
+                    for i in $field {
+                        writeln!(f, "{}", i)?;
+                    }
+                }
+            };
+        }
+
+        writeln!(f, "menu {}", self.description)?;
+        if let Some(conditions) = &self.visible {
+            for condition in conditions {
+                writeln!(f, "\tvisible if {}", condition)?;
+            }
+        }
+        if let Some(depends) = &self.depends {
+            for dep in depends {
+                writeln!(f, "\tdepends on {}", dep)?;
+            }
+        }
+
+        if let Some(configs) = &self.configs {
+            for config in configs {
+                writeln!(f, "source {}", config)?;
+            }
+        }
+        writemacro!(blocks);
+        writemacro!(choices);
+        writemacro!(menus);
+        writemacro!(options);
+        Ok(())
+    }
+}
+
+impl Display for KChoice<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "choice")?;
+
+        if self.optional {
+            writeln!(f, "\toptional")?;
+        }
+
+        write!(f, "\t{}", self.option_type)?;
+        if let Some(prompt) = &self.prompt {
+            write!(f, " {}", prompt)?;
+        }
+        writeln!(f)?;
+
+        if let Some(defaults) = &self.defaults {
+            for def in defaults {
+                writeln!(f, "\tdefaults {}", def)?;
+            }
+        }
+
+        if let Some(depends) = &self.depends {
+            for dep in depends {
+                writeln!(f, "\tdepends on {}", dep)?;
+            }
+        }
+
+        if let Some(help) = &self.help {
+            writeln!(f, "\thelp")?;
+            for line in &help.text {
+                if line.is_empty() {
+                    writeln!(f)?;
+                } else {
+                    write!(f, "\t  {}", line)?;
+                }
+            }
+        }
+
+        for opt in &self.options {
+            writeln!(f, "{}", opt)?;
+        }
+
+        writeln!(f, "endchoice")?;
+        Ok(())
+    }
+}
+
+impl Display for KConfig<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        macro_rules! writemacro {
+            ($field:ident) => {
+                if let Some($field) = &self.$field {
+                    for i in $field {
+                        writeln!(f, "{}", i)?;
+                    }
+                }
+            };
+        }
+
+        if let Some(mainmenu) = &self.mainmenu {
+            writeln!(f, "mainmenu {}", mainmenu)?;
+        }
+
+        if let Some(configs) = &self.configs {
+            for config in configs {
+                writeln!(f, "source {}", config)?;
+            }
+        }
+
+
+        writemacro!(blocks);
+        writemacro!(choices);
+        writemacro!(menus);
+        writemacro!(options);
+        Ok(())
+    }
+}
+
+impl Display for Block<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "if {}", self.condition)?;
+        writeln!(f, "{}", self.config)?;
+        writeln!(f, "endif")?;
         Ok(())
     }
 }
